@@ -32,6 +32,19 @@ def ingest_documents(data_dir=config.DATA_DIR, db_dir=config.DB_DIR):
     print(f"Done! Knowledge base saved to {db_dir}.")
     return index
 
+def reingest_documents(data_dir=config.DATA_DIR, db_dir=config.DB_DIR):
+    """Delete existing collection and re-ingest all documents from scratch."""
+    print("Clearing old knowledge base...")
+    db = chromadb.PersistentClient(path=db_dir)
+    try:
+        db.delete_collection(config.COLLECTION_NAME)
+        print("Old collection deleted.")
+    except Exception:
+        print("No existing collection to delete.")
+
+    return ingest_documents(data_dir, db_dir)
+
+
 if __name__ == "__main__":
     os.makedirs(config.DATA_DIR, exist_ok=True)
 
