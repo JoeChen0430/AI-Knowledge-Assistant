@@ -17,7 +17,7 @@ def ingest_documents(data_dir="./data", db_dir="./chroma_db"):
     print(f"Reading documents from {data_dir}...")
 
     try:
-        documents = SimpleDirectoryReader(data_dir).load_data()
+        documents = SimpleDirectoryReader(data_dir, recursive=True).load_data()
         print(f"Loaded {len(documents)} document chunks.")
     except Exception as e:
         print(f"Error: Failed to read documents from {data_dir}. {e}")
