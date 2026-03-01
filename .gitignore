@@ -4,4 +4,5 @@ __pycache__/
 .env
 data/
 chroma_db/
+chat_history/
 .DS_Store
