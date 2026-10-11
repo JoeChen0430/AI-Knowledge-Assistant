@@ -1,0 +1,20 @@
+.git/
+.claude/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
+.env
+
+# runtime state and user data never go into the image
+data/
+var/
+chroma_db/
+chat_history/
+eval/results/
+
+tests/
+docs/
+ops/
+PL-Hermes/
