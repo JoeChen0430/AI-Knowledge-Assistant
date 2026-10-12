@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Knowledge Assistant · 架構筆記</title>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Noto+Serif:ital@0;1&family=Noto+Sans+KR:wght@400;500;600&family=Noto+Serif+KR:wght@400&family=Noto+Sans+TC:wght@400;500;600&family=Noto+Serif+TC:wght@400&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --paper: #2d3142; --paper-2: #393e53; --ink: #f5f5f5; --muted: #bfc0c0; --soft: #8e98ac;
+  --rule: rgba(245,245,245,0.12); --accent: #f08a59; --link: #6a95d8;
+  --font-sans: 'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', system-ui, sans-serif;
+  --font-serif: 'Instrument Serif', 'Noto Serif', 'Noto Serif TC', serif;
+  --font-mono: 'Geist Mono', ui-monospace, Menlo, monospace;
+}
+body { font-family: var(--font-sans); background: var(--paper); color: var(--ink); padding: 3rem 2rem; line-height: 1.65; }
+.container { max-width: 1040px; margin: 0 auto; }
+.eyebrow { font-family: var(--font-mono); font-size: 0.66rem; font-weight: 500; letter-spacing: 0.18em;
+  text-transform: uppercase; color: var(--muted); margin-bottom: 0.5rem; }
+h1 { font-family: var(--font-serif); font-size: 2rem; font-weight: 400; letter-spacing: -0.01em; line-height: 1.2; }
+.idea { margin-top: 0.75rem; max-width: 62ch; color: var(--muted); font-size: 1rem; }
+.idea b { color: var(--ink); font-weight: 600; }
+section { margin-top: 3.5rem; }
+h2 { font-family: var(--font-serif); font-size: 1.6rem; font-weight: 400; margin-bottom: 0.25rem; }
+.lede { color: var(--muted); font-size: 0.92rem; max-width: 70ch; }
+figure { margin-top: 2.25rem; }
+figure h3 { font-size: 1.05rem; font-weight: 600; margin-bottom: 0.75rem; }
+.diagram { overflow-x: auto; }
+svg { width: 100%; min-width: 900px; display: block; }
+.recall { margin-top: 0.9rem; padding-left: 0.85rem; border-left: 2px solid var(--accent);
+  color: var(--muted); font-size: 0.9rem; max-width: 80ch; }
+.recall b { color: var(--ink); font-weight: 600; }
+.cards { display: grid; gap: 1rem; margin-top: 1.25rem; }
+.cards.c3 { grid-template-columns: 1.15fr 1fr 0.9fr; }
+.cards.c2 { grid-template-columns: 1.2fr 1fr; }
+.cards.c1 { grid-template-columns: 1fr; }
+@media (max-width: 760px) { .cards.c3, .cards.c2 { grid-template-columns: 1fr; } }
+.card { background: var(--paper-2); border: 1px solid var(--rule); border-radius: 6px; padding: 1.25rem; }
+.card .tag { font-family: var(--font-mono); font-size: 0.62rem; letter-spacing: 0.16em; text-transform: uppercase;
+  color: var(--soft); margin-bottom: 0.4rem; }
+.card-header { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.75rem; padding-bottom: 0.75rem;
+  border-bottom: 1px solid rgba(245,245,245,0.08); }
+.dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.dot.coral { background: var(--accent); } .dot.ink { background: var(--ink); }
+.dot.muted { background: var(--muted); } .dot.link { background: var(--link); } .dot.soft { background: var(--soft); }
+.card h4 { font-size: 0.92rem; font-weight: 600; }
+.card ul { list-style: none; color: var(--muted); font-size: 0.86rem; }
+.card li { margin-bottom: 0.4rem; padding-left: 0.95rem; position: relative; }
+.card li::before { content: '—'; position: absolute; left: 0; color: rgba(245,245,245,0.25); font-size: 0.75rem; }
+.card p { color: var(--muted); font-size: 0.88rem; }
+.card b { color: var(--ink); font-weight: 600; }
+code { font-family: var(--font-mono); font-size: 0.8em; color: var(--ink); background: rgba(245,245,245,0.07);
+  padding: 0.05em 0.35em; border-radius: 3px; }
+table { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
+th { text-align: left; font-family: var(--font-mono); font-size: 0.66rem; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--soft); font-weight: 500; padding: 0 0.75rem 0.5rem 0; border-bottom: 1px solid var(--rule); }
+td { color: var(--muted); padding: 0.55rem 0.75rem 0.55rem 0; border-bottom: 1px solid rgba(245,245,245,0.06); vertical-align: top; }
+td:first-child { color: var(--ink); white-space: nowrap; }
+.footer { margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--rule); font-family: var(--font-mono);
+  font-size: 0.72rem; letter-spacing: 0.06em; color: var(--soft); display: flex; justify-content: space-between;
+  flex-wrap: wrap; gap: 0.5rem; }
+</style>
+</head>
+<body>
+<div class="container">
+<header><p class="eyebrow">Architecture dossier · AI Knowledge Assistant</p><h1>個人知識庫 RAG 平台：架構筆記</h1><p class="idea">把自己的文件變成可以問答的知識庫。核心想法有三個：<b>索引永遠有一份完整版本在服務</b>、<b>模型壞掉時一路降級而不是報錯</b>、<b>沒把握的回答和記憶交給人決定</b>。</p></header><section><p class="eyebrow">01 · Overview</p><h2>全景</h2><figure><p class="eyebrow">Fig 1 · Concept</p><h3>這個系統解決哪三個問題？</h3><div class="diagram"><svg viewBox="0 0 960 424" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="problem-approach-title problem-approach-desc">
+<title id="problem-approach-title">這個系統解決哪三個問題？</title>
+<desc id="problem-approach-desc">概念圖：舊版的三個問題（改一份文件就整庫重建、模型一掛請求就失敗、答錯和亂記也照樣通過），各自對應現在的做法（增量 blue/green 索引、降級鏈、人工審核與 override rate）。</desc>
+<defs><marker id="problem-approach-muted" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#bfc0c0"/></marker><marker id="problem-approach-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#f08a59"/></marker><marker id="problem-approach-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#6a95d8"/></marker><marker id="problem-approach-soft" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#8e98ac"/></marker></defs>
+<rect width="100%" height="100%" fill="#2d3142"/>
+<path d="M 400,112 H 480" fill="none" stroke="#bfc0c0" stroke-width="1.2" marker-end="url(#problem-approach-muted)"/>
+<path d="M 400,224 H 480" fill="none" stroke="#bfc0c0" stroke-width="1.2" marker-end="url(#problem-approach-muted)"/>
+<path d="M 400,336 H 480" fill="none" stroke="#bfc0c0" stroke-width="1.2" marker-end="url(#problem-approach-muted)"/>
+<rect x="40" y="72" width="360" height="80" rx="6" fill="#2d3142"/>
+<rect x="40" y="72" width="360" height="80" rx="6" fill="rgba(191,192,192,0.10)" stroke="#8e98ac" stroke-width="1"/>
+<rect x="48" y="78" width="48" height="12" rx="2" fill="transparent" stroke="rgba(142,152,172,0.40)" stroke-width="0.8"/>
+<text x="72" y="87" fill="#8e98ac" font-size="7" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.08em">PROBLEM</text>
+<text x="56" y="117" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="start">改一份文件，就整庫重建</text>
+<text x="56" y="133" fill="#bfc0c0" font-size="12" font-weight="400" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="start">整庫刪掉重 embed，期間索引是空的</text>
+<rect x="480" y="72" width="440" height="80" rx="6" fill="#2d3142"/>
+<rect x="480" y="72" width="440" height="80" rx="6" fill="#393e53" stroke="#f5f5f5" stroke-width="1"/>
+<rect x="488" y="78" width="52" height="12" rx="2" fill="transparent" stroke="rgba(245,245,245,0.40)" stroke-width="0.8"/>
+<text x="514" y="87" fill="#f5f5f5" font-size="7" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.08em">APPROACH</text>
+<text x="904" y="138" fill="rgba(245,245,245,0.06)" font-size="32" font-weight="600" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="end">01</text>
+<text x="496" y="117" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="start">只重算變動的文件，建好新版本再切換</text>
+<text x="496" y="133" fill="#bfc0c0" font-size="12" font-weight="400" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="start">content hash 比對 · blue/green · smoke check 才上線</text>
+<rect x="40" y="184" width="360" height="80" rx="6" fill="#2d3142"/>
+<rect x="40" y="184" width="360" height="80" rx="6" fill="rgba(191,192,192,0.10)" stroke="#8e98ac" stroke-width="1"/>
+<rect x="48" y="190" width="48" height="12" rx="2" fill="transparent" stroke="rgba(142,152,172,0.40)" stroke-width="0.8"/>
+<text x="72" y="199" fill="#8e98ac" font-size="7" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.08em">PROBLEM</text>
+<text x="56" y="229" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="start">模型一掛，整個請求就報錯</text>
+<text x="56" y="245" fill="#bfc0c0" font-size="12" font-weight="400" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="start">沒有 timeout 預算，也沒有備援</text>
+<rect x="480" y="184" width="440" height="80" rx="6" fill="#2d3142"/>
+<rect x="480" y="184" width="440" height="80" rx="6" fill="#393e53" stroke="#f5f5f5" stroke-width="1"/>
+<rect x="488" y="190" width="52" height="12" rx="2" fill="transparent" stroke="rgba(245,245,245,0.40)" stroke-width="0.8"/>
+<text x="514" y="199" fill="#f5f5f5" font-size="7" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.08em">APPROACH</text>
+<text x="904" y="250" fill="rgba(245,245,245,0.06)" font-size="32" font-weight="600" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="end">02</text>
+<text x="496" y="229" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="start">一路降級，不直接失敗</text>
+<text x="496" y="245" fill="#bfc0c0" font-size="12" font-weight="400" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="start">breaker · time budget · 小模型 → cache → 原文段落</text>
+<rect x="40" y="296" width="360" height="80" rx="6" fill="#2d3142"/>
+<rect x="40" y="296" width="360" height="80" rx="6" fill="rgba(191,192,192,0.10)" stroke="#8e98ac" stroke-width="1"/>
+<rect x="48" y="302" width="48" height="12" rx="2" fill="transparent" stroke="rgba(142,152,172,0.40)" stroke-width="0.8"/>
+<text x="72" y="311" fill="#8e98ac" font-size="7" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.08em">PROBLEM</text>
+<text x="56" y="341" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="start">答錯也照樣顯示、亂記也照樣寫入</text>
+<text x="56" y="357" fill="#bfc0c0" font-size="12" font-weight="400" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="start">回答沒依據照樣出現；記憶直接寫進資料庫</text>
+<rect x="480" y="296" width="440" height="80" rx="6" fill="#2d3142"/>
+<rect x="480" y="296" width="440" height="80" rx="6" fill="#393e53" stroke="#f5f5f5" stroke-width="1"/>
+<rect x="488" y="302" width="52" height="12" rx="2" fill="transparent" stroke="rgba(245,245,245,0.40)" stroke-width="0.8"/>
+<text x="514" y="311" fill="#f5f5f5" font-size="7" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.08em">APPROACH</text>
+<text x="904" y="362" fill="rgba(245,245,245,0.06)" font-size="32" font-weight="600" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="end">03</text>
+<text x="496" y="341" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="start">沒把握的交給人決定，再用判決調門檻</text>
+<text x="496" y="357" fill="#bfc0c0" font-size="12" font-weight="400" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="start">policy engine · 審核佇列 · override rate</text>
+<text x="40" y="52" fill="#8e98ac" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="start">舊版的問題</text>
+<text x="480" y="52" fill="#f08a59" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="start">現在的做法</text>
+</svg></div><div class="cards c2"><div class="card"><p class="tag">Why</p><div class="card-header"><span class="dot coral"></span><h4>為什麼是這三件事</h4></div><ul><li>這三個問題各自對應一個量得出來的數字：單份文件的更新時間、注入故障下的成功率、override rate。</li><li>三件事彼此獨立：ingest 壞了不影響問答，模型壞了不影響索引；policy 只決定「給不給」，不改答案內容。</li></ul></div><div class="card"><p class="tag">Say it</p><div class="card-header"><span class="dot ink"></span><h4>30 秒版本</h4></div><p>「這是本機跑的 RAG 知識庫。第一，增量 ingest：只重算改過的文件，新版本建好、驗證過才用一筆交易切換，查詢永遠看得到完整索引。第二，容錯：每個模型有斷路器、每個請求有時間預算，壞了就從主模型退到小模型、cache，最後只給原文段落。第三，人機協作：沒把握的回答和記憶送人審，人的判決寫回 audit log，用 override rate 回頭調門檻。」</p></div></div></figure><figure><p class="eyebrow">Fig 2 · Architecture</p><h3>有哪些模組？誰主動、誰在等誰？</h3><div class="diagram"><svg viewBox="0 0 960 650" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="architecture-title architecture-desc">
+<title id="architecture-title">有哪些模組？誰主動、誰在等誰？</title>
+<desc id="architecture-desc">高階架構：Streamlit UI 以 HTTP 呼叫 FastAPI；API 和 ingest worker 只透過狀態庫溝通（job 佇列與 ACTIVE 版本指標）；worker 主動領 job、embed 後寫入新的 Chroma collection 再切換版本；API 與 worker 都呼叫 Ollama。</desc>
+<defs><marker id="architecture-muted" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#bfc0c0"/></marker><marker id="architecture-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#f08a59"/></marker><marker id="architecture-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#6a95d8"/></marker><marker id="architecture-soft" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#8e98ac"/></marker></defs>
+<rect width="100%" height="100%" fill="#2d3142"/>
+<path d="M 168,144 H 264" fill="none" stroke="#6a95d8" stroke-width="1.2" marker-end="url(#architecture-link)"/>
+<path d="M 440,152 H 616 Q 624,152 624,160 V 288" fill="none" stroke="#6a95d8" stroke-width="1.2" marker-end="url(#architecture-link)"/>
+<path d="M 440,128 H 832 Q 840,128 840,136 V 288" fill="none" stroke="#bfc0c0" stroke-width="1.2" marker-end="url(#architecture-muted)"/>
+<path d="M 352,176 V 288" fill="none" stroke="#bfc0c0" stroke-width="1.2" marker-end="url(#architecture-muted)"/>
+<path d="M 320,368 V 480" fill="none" stroke="#bfc0c0" stroke-width="1.2" marker-end="url(#architecture-muted)"/>
+<path d="M 400,480 V 368" fill="none" stroke="#bfc0c0" stroke-width="1.2" marker-end="url(#architecture-muted)"/>
+<path d="M 440,496 H 616 Q 624,496 624,488 V 368" fill="none" stroke="#6a95d8" stroke-width="1.2" marker-end="url(#architecture-link)"/>
+<path d="M 440,528 H 832 Q 840,528 840,520 V 368" fill="none" stroke="#bfc0c0" stroke-width="1.2" marker-end="url(#architecture-muted)"/>
+<rect x="200" y="126" width="32" height="12" rx="2" fill="#2d3142"/>
+<text x="216" y="135" fill="#6a95d8" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">HTTP</text>
+<rect x="632" y="216" width="80" height="16" rx="2" fill="#2d3142"/>
+<text x="672" y="228.5" fill="#6a95d8" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">embed＋生成</text>
+<rect x="684" y="106" width="104" height="16" rx="2" fill="#2d3142"/>
+<text x="736" y="118.5" fill="#bfc0c0" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">查 ACTIVE 版本</text>
+<rect x="360" y="224" width="136" height="16" rx="2" fill="#2d3142"/>
+<text x="428" y="236.5" fill="#bfc0c0" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">寫 job · 讀 ACTIVE</text>
+<rect x="224" y="416" width="88" height="16" rx="2" fill="#2d3142"/>
+<text x="268" y="428.5" fill="#bfc0c0" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">PULL 領 job</text>
+<rect x="408" y="416" width="84" height="16" rx="2" fill="#2d3142"/>
+<text x="450" y="428.5" fill="#bfc0c0" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">切換 ACTIVE</text>
+<rect x="632" y="422" width="36" height="12" rx="2" fill="#2d3142"/>
+<text x="650" y="431" fill="#6a95d8" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">EMBED</text>
+<rect x="708" y="506" width="56" height="16" rx="2" fill="#2d3142"/>
+<text x="736" y="518.5" fill="#bfc0c0" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">寫新版本</text>
+<rect x="40" y="112" width="128" height="64" rx="6" fill="#2d3142"/>
+<rect x="40" y="112" width="128" height="64" rx="6" fill="rgba(191,192,192,0.10)" stroke="#8e98ac" stroke-width="1"/>
+<rect x="48" y="118" width="20" height="12" rx="2" fill="transparent" stroke="rgba(142,152,172,0.40)" stroke-width="0.8"/>
+<text x="58" y="127" fill="#8e98ac" font-size="7" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.08em">UI</text>
+<text x="104" y="149" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">Streamlit UI</text>
+<text x="104" y="165" fill="#bfc0c0" font-size="12" font-weight="400" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">只打 HTTP</text>
+<rect x="264" y="112" width="176" height="64" rx="6" fill="#2d3142"/>
+<rect x="264" y="112" width="176" height="64" rx="6" fill="#393e53" stroke="#f5f5f5" stroke-width="1"/>
+<rect x="272" y="118" width="28" height="12" rx="2" fill="transparent" stroke="rgba(245,245,245,0.40)" stroke-width="0.8"/>
+<text x="286" y="127" fill="#f5f5f5" font-size="7" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.08em">API</text>
+<text x="352" y="149" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">FastAPI 服務</text>
+<text x="352" y="165" fill="#bfc0c0" font-size="12" font-weight="400" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">請求 thread 等模型回應</text>
+<rect x="264" y="288" width="176" height="80" rx="6" fill="#2d3142"/>
+<rect x="264" y="288" width="176" height="80" rx="6" fill="rgba(240,138,89,0.08)" stroke="#f08a59" stroke-width="1"/>
+<rect x="272" y="294" width="20" height="12" rx="2" fill="transparent" stroke="rgba(240,138,89,0.50)" stroke-width="0.8"/>
+<text x="282" y="303" fill="#f08a59" font-size="7" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.08em">DB</text>
+<text x="352" y="326.5" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">狀態庫</text>
+<text x="352" y="340.5" fill="#bfc0c0" font-size="9" font-weight="400" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">Postgres / SQLite</text>
+<text x="352" y="355.5" fill="#bfc0c0" font-size="12" font-weight="400" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">job 佇列 · ACTIVE 指標</text>
+<rect x="248" y="496" width="176" height="64" rx="6" fill="#2d3142"/>
+<rect x="248" y="496" width="176" height="64" rx="6" fill="#393e53" stroke="#f5f5f5" stroke-opacity="0.55" stroke-width="1"/>
+<rect x="256" y="488" width="176" height="64" rx="6" fill="#2d3142"/>
+<rect x="256" y="488" width="176" height="64" rx="6" fill="#393e53" stroke="#f5f5f5" stroke-opacity="0.55" stroke-width="1"/>
+<rect x="264" y="480" width="176" height="64" rx="6" fill="#2d3142"/>
+<rect x="264" y="480" width="176" height="64" rx="6" fill="#393e53" stroke="#f5f5f5" stroke-width="1"/>
+<rect x="272" y="486" width="40" height="12" rx="2" fill="transparent" stroke="rgba(245,245,245,0.40)" stroke-width="0.8"/>
+<text x="292" y="495" fill="#f5f5f5" font-size="7" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.08em">WORKER</text>
+<text x="352" y="517" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">Ingest Worker ×N</text>
+<text x="352" y="533" fill="#bfc0c0" font-size="12" font-weight="400" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">block 在 embedding 上</text>
+<rect x="544" y="288" width="160" height="80" rx="6" fill="#2d3142"/>
+<rect x="544" y="288" width="160" height="80" rx="6" fill="rgba(245,245,245,0.03)" stroke="rgba(245,245,245,0.30)" stroke-width="1"/>
+<rect x="552" y="294" width="28" height="12" rx="2" fill="transparent" stroke="rgba(245,245,245,0.22)" stroke-width="0.8"/>
+<text x="566" y="303" fill="#8e98ac" font-size="7" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.08em">LLM</text>
+<text x="624" y="328" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">Ollama</text>
+<text x="624" y="342" fill="#bfc0c0" font-size="9" font-weight="400" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">llama3 → llama3.2:1b</text>
+<text x="624" y="355" fill="#bfc0c0" font-size="9" font-weight="400" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">nomic-embed-text</text>
+<rect x="760" y="288" width="160" height="80" rx="6" fill="#2d3142"/>
+<rect x="760" y="288" width="160" height="80" rx="6" fill="rgba(245,245,245,0.05)" stroke="#bfc0c0" stroke-width="1"/>
+<rect x="768" y="294" width="28" height="12" rx="2" fill="transparent" stroke="rgba(191,192,192,0.50)" stroke-width="0.8"/>
+<text x="782" y="303" fill="#bfc0c0" font-size="7" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.08em">VEC</text>
+<text x="840" y="333" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">Chroma</text>
+<text x="840" y="349" fill="#bfc0c0" font-size="12" font-weight="400" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">一版一個 collection</text>
+<line x1="40" y1="584" x2="920" y2="584" stroke="rgba(245,245,245,0.12)" stroke-width="0.8"/>
+<text x="40" y="600" fill="#bfc0c0" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" letter-spacing="0.18em">LEGEND</text>
+<rect x="40" y="613" width="14" height="10" rx="2" fill="rgba(240,138,89,0.08)" stroke="#f08a59" stroke-width="1"/>
+<text x="62" y="622" fill="#bfc0c0" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif">協調點</text>
+<rect x="126.0" y="613" width="14" height="10" rx="2" fill="#393e53" stroke="#f5f5f5" stroke-width="1"/>
+<text x="148.0" y="622" fill="#bfc0c0" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif">服務</text>
+<rect x="200.0" y="613" width="14" height="10" rx="2" fill="rgba(245,245,245,0.05)" stroke="#bfc0c0" stroke-width="1"/>
+<text x="222.0" y="622" fill="#bfc0c0" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif">索引</text>
+<rect x="274.0" y="613" width="14" height="10" rx="2" fill="rgba(245,245,245,0.03)" stroke="rgba(245,245,245,0.30)" stroke-width="1"/>
+<text x="296.0" y="622" fill="#bfc0c0" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif">模型</text>
+<rect x="348.0" y="613" width="14" height="10" rx="2" fill="rgba(191,192,192,0.10)" stroke="#8e98ac" stroke-width="1"/>
+<text x="370.0" y="622" fill="#bfc0c0" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif">介面</text>
+<rect x="422.0" y="615" width="12" height="9" rx="2" fill="#393e53" stroke="#f5f5f5" stroke-opacity="0.5" stroke-width="1"/>
+<rect x="426.0" y="611" width="12" height="9" rx="2" fill="#393e53" stroke="#f5f5f5" stroke-opacity="1.0" stroke-width="1"/>
+<text x="444.0" y="622" fill="#bfc0c0" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif">可同時跑多份</text>
+<line x1="544.0" y1="618" x2="566.0" y2="618" stroke="#6a95d8" stroke-width="1.2" marker-end="url(#architecture-link)"/>
+<text x="580.0" y="622" fill="#bfc0c0" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif">HTTP，呼叫端等回應</text>
+<line x1="720.8" y1="618" x2="742.8" y2="618" stroke="#bfc0c0" stroke-width="1.2" marker-end="url(#architecture-muted)"/>
+<text x="756.8" y="622" fill="#bfc0c0" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif">資料讀寫</text>
+</svg></div><div class="cards c3"><div class="card"><p class="tag">Why</p><div class="card-header"><span class="dot coral"></span><h4>API 和 worker 只透過狀態庫溝通</h4></div><ul><li>兩邊不互相呼叫：worker 掛掉、重啟、加開都不影響問答。</li><li>job 用一條 UPDATE 原子領取並帶 lease；worker 死了，lease 到期後 job 會被收回重做。</li><li>跑很久的 build 靠 heartbeat 續 lease，不會被當成死掉而重跑第二份。</li></ul></div><div class="card"><p class="tag">Blocking</p><div class="card-header"><span class="dot link"></span><h4>誰主動、誰在等</h4></div><ul><li>UI 送出 HTTP 後等待。</li><li>API 的 request thread 同步等 Ollama 生成。不串流，因為 policy gate 要看到完整答案才能決定給不給。</li><li>worker 主動 <b>PULL</b> job，自己 block 在 embedding 上，不佔 API 的 thread。</li><li>同一個 tenant 一次只跑一個 build：較晚領到的會 defer，不算失敗次數。</li></ul></div><div class="card"><p class="tag">Deploy</p><div class="card-header"><span class="dot muted"></span><h4>本機 vs compose</h4></div><ul><li>本機：一個行程，worker 是 API 裡的背景 thread，SQLite＋內嵌 Chroma。</li><li>compose：api、worker、ui 分開跑，Postgres＋Chroma server。</li><li>Ollama 預設用主機的：Mac 上的容器用不到 GPU。</li></ul></div></div></figure></section><section><p class="eyebrow">02 · Walkthrough</p><h2>實際案例跑一次</h2><p class="lede">以下數字都來自這次的實跑：docker compose＋本機 Ollama（llama3、nomic-embed-text），資料是 <code>data/</code> 裡的 14 份申請資料（13 份 docx、1 份 pdf）。</p><figure><p class="eyebrow">Fig 3 · Sequence</p><h3>14 份申請資料怎麼變成可以查的索引？</h3><div class="diagram"><svg viewBox="0 0 960 634" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="case-ingest-title case-ingest-desc">
+<title id="case-ingest-title">案例：14 份申請資料怎麼變成可以查的索引？</title>
+<desc id="case-ingest-desc">Sequence 圖：API 排入 reindex job，worker 主動領取、比對 hash、記錄 v1 為 BUILDING、請 Ollama embed 25 個 chunk、寫入新的 Chroma collection、smoke check 通過後用一筆交易把 v1 切成 ACTIVE。</desc>
+<defs><marker id="case-ingest-muted" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#bfc0c0"/></marker><marker id="case-ingest-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#f08a59"/></marker><marker id="case-ingest-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#6a95d8"/></marker><marker id="case-ingest-soft" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#8e98ac"/></marker></defs>
+<rect width="100%" height="100%" fill="#2d3142"/>
+<line x1="144" y1="96" x2="144" y2="552" stroke="rgba(245,245,245,0.20)" stroke-width="1" stroke-dasharray="3,3"/>
+<line x1="304" y1="96" x2="304" y2="552" stroke="rgba(245,245,245,0.20)" stroke-width="1" stroke-dasharray="3,3"/>
+<line x1="464" y1="96" x2="464" y2="552" stroke="rgba(245,245,245,0.20)" stroke-width="1" stroke-dasharray="3,3"/>
+<line x1="624" y1="96" x2="624" y2="552" stroke="rgba(245,245,245,0.20)" stroke-width="1" stroke-dasharray="3,3"/>
+<line x1="784" y1="96" x2="784" y2="552" stroke="rgba(245,245,245,0.20)" stroke-width="1" stroke-dasharray="3,3"/>
+<rect x="460" y="172" width="8" height="312" fill="rgba(245,245,245,0.06)" stroke="#bfc0c0" stroke-width="0.8"/>
+<path d="M 144,136 H 304" fill="none" stroke="#bfc0c0" stroke-width="1.2" marker-end="url(#case-ingest-muted)"/>
+<path d="M 460,172 H 304" fill="none" stroke="#bfc0c0" stroke-width="1.2" marker-end="url(#case-ingest-muted)"/>
+<path d="M 304,208 H 460" fill="none" stroke="#bfc0c0" stroke-width="1.0" stroke-dasharray="4,3" marker-end="url(#case-ingest-muted)"/>
+<path d="M 468,236 H 484 Q 492,236 492,244 V 256 Q 492,264 484,264 H 468" fill="none" stroke="#bfc0c0" stroke-width="1.2" marker-end="url(#case-ingest-muted)"/>
+<path d="M 460,300 H 304" fill="none" stroke="#bfc0c0" stroke-width="1.2" marker-end="url(#case-ingest-muted)"/>
+<path d="M 468,336 H 624" fill="none" stroke="#bfc0c0" stroke-width="1.2" marker-end="url(#case-ingest-muted)"/>
+<path d="M 624,372 H 468" fill="none" stroke="#bfc0c0" stroke-width="1.0" stroke-dasharray="4,3" marker-end="url(#case-ingest-muted)"/>
+<path d="M 468,408 H 784" fill="none" stroke="#bfc0c0" stroke-width="1.2" marker-end="url(#case-ingest-muted)"/>
+<path d="M 468,444 H 784" fill="none" stroke="#bfc0c0" stroke-width="1.2" marker-end="url(#case-ingest-muted)"/>
+<path d="M 460,480 H 304" fill="none" stroke="#f08a59" stroke-width="1.2" marker-end="url(#case-ingest-accent)"/>
+<path d="M 144,516 H 304" fill="none" stroke="#bfc0c0" stroke-width="1.2" marker-end="url(#case-ingest-muted)"/>
+<rect x="170" y="114" width="108" height="16" rx="2" fill="#2d3142"/>
+<text x="224" y="126.5" fill="#bfc0c0" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">排 reindex job</text>
+<rect x="336" y="150" width="92" height="16" rx="2" fill="#2d3142"/>
+<text x="382" y="162.5" fill="#bfc0c0" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">PULL：領 job</text>
+<rect x="334" y="190" width="96" height="12" rx="2" fill="#2d3142"/>
+<text x="382" y="199" fill="#bfc0c0" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">JOB · LEASE 600S</text>
+<rect x="312" y="242" width="140" height="16" rx="2" fill="#2d3142"/>
+<text x="382" y="254.5" fill="#bfc0c0" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">比對 hash：14 份新檔</text>
+<rect x="322" y="278" width="120" height="16" rx="2" fill="#2d3142"/>
+<text x="382" y="290.5" fill="#bfc0c0" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">記錄 v1 BUILDING</text>
+<rect x="500" y="318" width="92" height="12" rx="2" fill="#2d3142"/>
+<text x="546" y="327" fill="#bfc0c0" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">EMBED 25 CHUNKS</text>
+<rect x="512" y="350" width="68" height="16" rx="2" fill="#2d3142"/>
+<text x="546" y="362.5" fill="#bfc0c0" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">25 個向量</text>
+<rect x="478" y="386" width="136" height="16" rx="2" fill="#2d3142"/>
+<text x="546" y="398.5" fill="#bfc0c0" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">寫入 v1 collection</text>
+<rect x="494" y="426" width="104" height="12" rx="2" fill="#2d3142"/>
+<text x="546" y="435" fill="#bfc0c0" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">SMOKE CHECK 25/25</text>
+<rect x="316" y="458" width="132" height="16" rx="2" fill="#2d3142"/>
+<text x="382" y="470.5" fill="#f08a59" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">一筆 txn 切 ACTIVE</text>
+<rect x="178" y="494" width="92" height="16" rx="2" fill="#2d3142"/>
+<text x="224" y="506.5" fill="#bfc0c0" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">下一題讀到 v1</text>
+<rect x="80" y="48" width="128" height="48" rx="6" fill="#2d3142"/>
+<rect x="80" y="48" width="128" height="48" rx="6" fill="#393e53" stroke="#f5f5f5" stroke-width="1"/>
+<text x="144" y="76" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">FastAPI 服務</text>
+<rect x="240" y="48" width="128" height="48" rx="6" fill="#2d3142"/>
+<rect x="240" y="48" width="128" height="48" rx="6" fill="rgba(245,245,245,0.05)" stroke="#bfc0c0" stroke-width="1"/>
+<text x="304" y="76" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">狀態庫</text>
+<rect x="400" y="48" width="128" height="48" rx="6" fill="#2d3142"/>
+<rect x="400" y="48" width="128" height="48" rx="6" fill="#393e53" stroke="#f5f5f5" stroke-width="1"/>
+<text x="464" y="76" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">Ingest Worker</text>
+<rect x="560" y="48" width="128" height="48" rx="6" fill="#2d3142"/>
+<rect x="560" y="48" width="128" height="48" rx="6" fill="rgba(245,245,245,0.03)" stroke="rgba(245,245,245,0.30)" stroke-width="1"/>
+<text x="624" y="76" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">Ollama</text>
+<rect x="720" y="48" width="128" height="48" rx="6" fill="#2d3142"/>
+<rect x="720" y="48" width="128" height="48" rx="6" fill="rgba(245,245,245,0.05)" stroke="#bfc0c0" stroke-width="1"/>
+<text x="784" y="76" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">Chroma</text>
+<path d="M 860,172 H 864 V 264 H 860" fill="none" stroke="#8e98ac" stroke-width="1"/>
+<text x="872" y="216" fill="#8e98ac" font-size="9" font-weight="400" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">plan</text>
+<text x="872" y="229" fill="#f5f5f5" font-size="9" font-weight="400" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">5.0s</text>
+<path d="M 860,336 H 864 V 372 H 860" fill="none" stroke="#8e98ac" stroke-width="1"/>
+<text x="872" y="352" fill="#8e98ac" font-size="9" font-weight="400" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">embed</text>
+<text x="872" y="365" fill="#f5f5f5" font-size="9" font-weight="400" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">2.1s</text>
+<path d="M 860,444 H 864 V 480 H 860" fill="none" stroke="#8e98ac" stroke-width="1"/>
+<text x="872" y="460" fill="#8e98ac" font-size="9" font-weight="400" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">finalize</text>
+<text x="872" y="473" fill="#f5f5f5" font-size="9" font-weight="400" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">0.05s</text>
+<text x="864" y="548" fill="#f5f5f5" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="start">共 8.6s</text>
+<line x1="40" y1="568" x2="920" y2="568" stroke="rgba(245,245,245,0.12)" stroke-width="0.8"/>
+<text x="40" y="584" fill="#bfc0c0" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" letter-spacing="0.18em">LEGEND</text>
+<line x1="40" y1="602" x2="62" y2="602" stroke="#bfc0c0" stroke-width="1.2" marker-end="url(#case-ingest-muted)"/>
+<text x="76" y="606" fill="#bfc0c0" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif">同步呼叫</text>
+<line x1="152.0" y1="602" x2="174.0" y2="602" stroke="#bfc0c0" stroke-width="1.2" stroke-dasharray="4,3" marker-end="url(#case-ingest-muted)"/>
+<text x="188.0" y="606" fill="#bfc0c0" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif">回應</text>
+<line x1="240.0" y1="602" x2="262.0" y2="602" stroke="#f08a59" stroke-width="1.2" marker-end="url(#case-ingest-accent)"/>
+<text x="276.0" y="606" fill="#bfc0c0" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif">關鍵一步：切換版本</text>
+</svg></div><div class="cards c3"><div class="card"><p class="tag">Why</p><div class="card-header"><span class="dot coral"></span><h4>為什麼先記一筆 BUILDING</h4></div><p>如果 worker 在 embed 途中死掉，這筆 BUILDING 就是孤兒 collection 的線索：下一次 build 開始前，它會被標成 FAILED，collection 也會被刪掉。</p></div><div class="card"><p class="tag">Numbers</p><div class="card-header"><span class="dot link"></span><h4>時間花在哪</h4></div><ul><li>plan 5.0s：大多花在解析 docx。</li><li>embed 2.1s：25 個 chunk，每批 16 個。第一次 build 沒有可重用的向量，所以全部都要 embed。</li><li>finalize 0.05s，總共 8.6s。</li></ul></div><div class="card"><p class="tag">Review</p><div class="card-header"><span class="dot muted"></span><h4>複習重點</h4></div><p>第 10 步之前，查詢看到的是舊版本（這裡是「還沒有索引」）；之後看到 v1。中間不存在「半套索引」這種狀態，這就是 no empty-index window 的意思。</p></div></div></figure><figure><p class="eyebrow">Fig 4 · Three cases</p><h3>同一個問題，模型正常和掛掉時各走哪條路？</h3><div class="diagram"><svg viewBox="0 0 960 490" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="case-query-title case-query-desc">
+<title id="case-query-title">同一個問題，模型正常和掛掉時各走哪條路？</title>
+<desc id="case-query-desc">三種情況並排：模型正常時 Q1 經 embed、向量檢索、llama3 生成後放行；Ollama 停掉後再問 Q1，向量從 LRU 命中、生成兩層失敗，由 stale cache 接住；問新題 Q2 時 embedding 失敗改用關鍵字檢索，生成失敗後回傳原文段落。</desc>
+<defs><marker id="case-query-muted" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#bfc0c0"/></marker><marker id="case-query-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#f08a59"/></marker><marker id="case-query-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#6a95d8"/></marker><marker id="case-query-soft" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#8e98ac"/></marker></defs>
+<rect width="100%" height="100%" fill="#2d3142"/>
+<path d="M 304,124 H 328" fill="none" stroke="#bfc0c0" stroke-width="1.2" marker-end="url(#case-query-muted)"/>
+<path d="M 496,124 H 520" fill="none" stroke="#bfc0c0" stroke-width="1.2" marker-end="url(#case-query-muted)"/>
+<path d="M 688,124 H 712" fill="none" stroke="#bfc0c0" stroke-width="1.2" marker-end="url(#case-query-muted)"/>
+<path d="M 304,236 H 328" fill="none" stroke="#bfc0c0" stroke-width="1.2" marker-end="url(#case-query-muted)"/>
+<path d="M 496,236 H 520" fill="none" stroke="#bfc0c0" stroke-width="1.2" marker-end="url(#case-query-muted)"/>
+<path d="M 688,236 H 712" fill="none" stroke="#bfc0c0" stroke-width="1.2" marker-end="url(#case-query-muted)"/>
+<path d="M 304,348 H 328" fill="none" stroke="#bfc0c0" stroke-width="1.2" marker-end="url(#case-query-muted)"/>
+<path d="M 496,348 H 520" fill="none" stroke="#bfc0c0" stroke-width="1.2" marker-end="url(#case-query-muted)"/>
+<path d="M 688,348 H 712" fill="none" stroke="#bfc0c0" stroke-width="1.2" marker-end="url(#case-query-muted)"/>
+<rect x="136" y="80" width="168" height="88" rx="6" fill="#2d3142"/>
+<rect x="136" y="80" width="168" height="88" rx="6" fill="#393e53" stroke="#f5f5f5" stroke-width="1"/>
+<text x="220" y="121.5" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">embed 問題</text>
+<text x="220" y="135.5" fill="#bfc0c0" font-size="9" font-weight="400" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">nomic-embed-text</text>
+<rect x="328" y="80" width="168" height="88" rx="6" fill="#2d3142"/>
+<rect x="328" y="80" width="168" height="88" rx="6" fill="#393e53" stroke="#f5f5f5" stroke-width="1"/>
+<text x="412" y="121.5" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">查 ACTIVE v1</text>
+<text x="412" y="135.5" fill="#bfc0c0" font-size="9" font-weight="400" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">top 4: .58 .57 .56 .54</text>
+<rect x="520" y="80" width="168" height="88" rx="6" fill="#2d3142"/>
+<rect x="520" y="80" width="168" height="88" rx="6" fill="#393e53" stroke="#f5f5f5" stroke-width="1"/>
+<text x="604" y="120" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">llama3 生成</text>
+<text x="604" y="136" fill="#bfc0c0" font-size="12" font-weight="400" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">tier 0，主模型</text>
+<rect x="712" y="80" width="168" height="88" rx="6" fill="#2d3142"/>
+<rect x="712" y="80" width="168" height="88" rx="6" fill="#393e53" stroke="#f5f5f5" stroke-width="1"/>
+<text x="796" y="113.5" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">放行</text>
+<text x="796" y="127.5" fill="#bfc0c0" font-size="9" font-weight="400" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">grounding 0.61 ≥ 0.40</text>
+<text x="796" y="142.5" fill="#bfc0c0" font-size="12" font-weight="400" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">31s，含冷啟動</text>
+<rect x="136" y="192" width="168" height="88" rx="6" fill="#2d3142"/>
+<rect x="136" y="192" width="168" height="88" rx="6" fill="#393e53" stroke="#f5f5f5" stroke-width="1"/>
+<text x="220" y="232" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">向量命中 LRU</text>
+<text x="220" y="248" fill="#bfc0c0" font-size="12" font-weight="400" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">不用再打 embedding</text>
+<rect x="328" y="192" width="168" height="88" rx="6" fill="#2d3142"/>
+<rect x="328" y="192" width="168" height="88" rx="6" fill="#393e53" stroke="#f5f5f5" stroke-width="1"/>
+<text x="412" y="232" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">查 ACTIVE v1</text>
+<text x="412" y="248" fill="#bfc0c0" font-size="12" font-weight="400" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">同樣 4 段證據</text>
+<rect x="520" y="192" width="168" height="88" rx="6" fill="#2d3142"/>
+<rect x="520" y="192" width="168" height="88" rx="6" fill="rgba(245,245,245,0.02)" stroke="rgba(245,245,245,0.28)" stroke-width="1" stroke-dasharray="4,3"/>
+<text x="604" y="232" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">llama3 ✗ → 1b ✗</text>
+<text x="604" y="248" fill="#bfc0c0" font-size="12" font-weight="400" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">兩層都連不上</text>
+<rect x="712" y="192" width="168" height="88" rx="6" fill="#2d3142"/>
+<rect x="712" y="192" width="168" height="88" rx="6" fill="rgba(240,138,89,0.08)" stroke="#f08a59" stroke-width="1"/>
+<text x="796" y="225.5" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">stale cache</text>
+<text x="796" y="241.5" fill="#bfc0c0" font-size="12" font-weight="400" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">同題＋同 chunk id</text>
+<text x="796" y="255.5" fill="#bfc0c0" font-size="9" font-weight="400" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">0.06s · degraded</text>
+<rect x="136" y="304" width="168" height="88" rx="6" fill="#2d3142"/>
+<rect x="136" y="304" width="168" height="88" rx="6" fill="rgba(245,245,245,0.02)" stroke="rgba(245,245,245,0.28)" stroke-width="1" stroke-dasharray="4,3"/>
+<text x="220" y="344" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">embed ✗</text>
+<text x="220" y="360" fill="#bfc0c0" font-size="12" font-weight="400" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">重試 3 次後放棄</text>
+<rect x="328" y="304" width="168" height="88" rx="6" fill="#2d3142"/>
+<rect x="328" y="304" width="168" height="88" rx="6" fill="#393e53" stroke="#f5f5f5" stroke-width="1"/>
+<text x="412" y="336" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">關鍵字檢索</text>
+<text x="412" y="352" fill="#bfc0c0" font-size="12" font-weight="400" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">中文 bigram 比對</text>
+<text x="412" y="368" fill="#bfc0c0" font-size="12" font-weight="400" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">命中租屋.docx</text>
+<rect x="520" y="304" width="168" height="88" rx="6" fill="#2d3142"/>
+<rect x="520" y="304" width="168" height="88" rx="6" fill="rgba(245,245,245,0.02)" stroke="rgba(245,245,245,0.28)" stroke-width="1" stroke-dasharray="4,3"/>
+<text x="604" y="344" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">生成 ✗</text>
+<text x="604" y="360" fill="#bfc0c0" font-size="12" font-weight="400" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">兩個模型都掛</text>
+<rect x="712" y="304" width="168" height="88" rx="6" fill="#2d3142"/>
+<rect x="712" y="304" width="168" height="88" rx="6" fill="rgba(240,138,89,0.08)" stroke="#f08a59" stroke-width="1"/>
+<text x="796" y="345.5" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">回傳原文段落</text>
+<text x="796" y="359.5" fill="#bfc0c0" font-size="9" font-weight="400" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">0.72s · extractive</text>
+<text x="40" y="36" fill="#bfc0c0" font-size="12" font-weight="400" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="start">Q1＝「我在最佳化實驗室做了什麼研究？」　　Q2＝「我的租屋平台專題是做什麼的？」</text>
+<text x="220" y="64" fill="#8e98ac" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">① 問題向量</text>
+<text x="412" y="64" fill="#8e98ac" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">② 檢索</text>
+<text x="604" y="64" fill="#8e98ac" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">③ 生成</text>
+<text x="796" y="64" fill="#8e98ac" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">④ 結果</text>
+<text x="40" y="120" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="start">正常</text>
+<text x="40" y="138" fill="#8e98ac" font-size="12" font-weight="400" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="start">Q1</text>
+<text x="40" y="232" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="start">Ollama 停掉</text>
+<text x="40" y="250" fill="#8e98ac" font-size="12" font-weight="400" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="start">再問 Q1</text>
+<text x="40" y="344" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="start">Ollama 停掉</text>
+<text x="40" y="362" fill="#8e98ac" font-size="12" font-weight="400" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="start">問新題 Q2</text>
+<line x1="40" y1="424" x2="920" y2="424" stroke="rgba(245,245,245,0.12)" stroke-width="0.8"/>
+<text x="40" y="440" fill="#bfc0c0" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" letter-spacing="0.18em">LEGEND</text>
+<rect x="40" y="453" width="14" height="10" rx="2" fill="rgba(240,138,89,0.08)" stroke="#f08a59" stroke-width="1"/>
+<text x="62" y="462" fill="#bfc0c0" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif">降級接住的那一步</text>
+<rect x="186.0" y="453" width="14" height="10" rx="2" fill="#393e53" stroke="#f5f5f5" stroke-width="1"/>
+<text x="208.0" y="462" fill="#bfc0c0" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif">正常步驟</text>
+<rect x="284.0" y="453" width="14" height="10" rx="2" fill="rgba(245,245,245,0.02)" stroke="rgba(245,245,245,0.28)" stroke-width="1" stroke-dasharray="4,3"/>
+<text x="306.0" y="462" fill="#bfc0c0" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif">失敗的步驟</text>
+</svg></div><div class="cards c3"><div class="card"><p class="tag">Why</p><div class="card-header"><span class="dot coral"></span><h4>為什麼再問 Q1 只要 0.06 秒</h4></div><p>問題向量有 LRU cache，不用再 embed；檢索照常拿到同樣 4 段證據；兩層模型都失敗後，用「問題＋證據 chunk id」當 key 找到上次的答案。</p></div><div class="card"><p class="tag">Why</p><div class="card-header"><span class="dot link"></span><h4>cache 為什麼不會給過時的答案</h4></div><p>chunk id 就是內容 hash。embedding 掛掉時，改用「只看問題」的索引找舊答案，但要先確認它引用的每個 chunk id 都還在 ACTIVE 版本裡。文件改過，id 就變了，cache 不會被用。</p></div><div class="card"><p class="tag">Pitfall</p><div class="card-header"><span class="dot soft"></span><h4>踩過的坑</h4></div><p>中文 grounding 原本永遠接近 0：整句中文被當成一個「詞」，幾乎配不到證據，這三個案例都會被拒答。改成中文 bigram 之後，Q1 的 grounding 是 0.61。</p></div></div></figure></section><section><p class="eyebrow">03 · Zoom in</p><h2>逐個模組放大</h2><figure><p class="eyebrow">Fig 5 · Index lifecycle</p><h3>一個索引版本會經過哪些狀態？查詢什麼時候看得到它？</h3><div class="diagram"><svg viewBox="0 0 960 530" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="index-lifecycle-title index-lifecycle-desc">
+<title id="index-lifecycle-title">一個索引版本會經過哪些狀態？</title>
+<desc id="index-lifecycle-desc">狀態圖：索引版本從 BUILDING 經 smoke check 與一筆交易切成 ACTIVE，下一版上線時變成 RETIRED，再下一版時被刪除；建置失敗則進入 FAILED，舊版照常服務；RETIRED 可手動 rollback 回 ACTIVE；查詢永遠只讀 ACTIVE。</desc>
+<defs><marker id="index-lifecycle-muted" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#bfc0c0"/></marker><marker id="index-lifecycle-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#f08a59"/></marker><marker id="index-lifecycle-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#6a95d8"/></marker><marker id="index-lifecycle-soft" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#8e98ac"/></marker></defs>
+<rect width="100%" height="100%" fill="#2d3142"/>
+<path d="M 192,142 V 200" fill="none" stroke="#bfc0c0" stroke-width="1.2" marker-end="url(#index-lifecycle-muted)"/>
+<path d="M 272,232 H 368" fill="none" stroke="#f08a59" stroke-width="1.2" marker-end="url(#index-lifecycle-accent)"/>
+<path d="M 528,232 H 624" fill="none" stroke="#bfc0c0" stroke-width="1.2" marker-end="url(#index-lifecycle-muted)"/>
+<path d="M 784,232 H 848" fill="none" stroke="#bfc0c0" stroke-width="1.2" marker-end="url(#index-lifecycle-muted)"/>
+<path d="M 192,264 V 376" fill="none" stroke="#bfc0c0" stroke-width="1.2" marker-end="url(#index-lifecycle-muted)"/>
+<path d="M 704,264 V 312 Q 704,320 696,320 H 456 Q 448,320 448,312 V 264" fill="none" stroke="#bfc0c0" stroke-width="1.0" stroke-dasharray="4,3" marker-end="url(#index-lifecycle-muted)"/>
+<path d="M 448,112 V 200" fill="none" stroke="#6a95d8" stroke-width="1.2" marker-end="url(#index-lifecycle-link)"/>
+<rect x="56" y="163" width="128" height="16" rx="2" fill="#2d3142"/>
+<text x="120" y="175.5" fill="#bfc0c0" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">worker 開始 build</text>
+<rect x="280" y="214" width="80" height="12" rx="2" fill="#2d3142"/>
+<text x="320" y="223" fill="#bfc0c0" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">SMOKE CHECK ✓</text>
+<rect x="274" y="240" width="92" height="16" rx="2" fill="#2d3142"/>
+<text x="320" y="252.5" fill="#bfc0c0" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">一筆 txn 切換</text>
+<rect x="542" y="210" width="68" height="16" rx="2" fill="#2d3142"/>
+<text x="576" y="222.5" fill="#bfc0c0" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">下一版上線</text>
+<rect x="788" y="210" width="56" height="16" rx="2" fill="#2d3142"/>
+<text x="816" y="222.5" fill="#bfc0c0" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">再下一版</text>
+<rect x="200" y="308" width="148" height="16" rx="2" fill="#2d3142"/>
+<text x="274" y="320.5" fill="#bfc0c0" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">embed 失敗 · 數量不符</text>
+<rect x="200" y="332" width="128" height="16" rx="2" fill="#2d3142"/>
+<text x="264" y="344.5" fill="#bfc0c0" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">或 worker 中途掛掉</text>
+<rect x="518" y="328" width="116" height="16" rx="2" fill="#2d3142"/>
+<text x="576" y="340.5" fill="#bfc0c0" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">rollback（手動）</text>
+<rect x="456" y="148" width="68" height="16" rx="2" fill="#2d3142"/>
+<text x="490" y="160.5" fill="#6a95d8" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">只讀這一版</text>
+<rect x="368" y="56" width="160" height="56" rx="6" fill="#2d3142"/>
+<rect x="368" y="56" width="160" height="56" rx="6" fill="rgba(191,192,192,0.10)" stroke="#8e98ac" stroke-width="1"/>
+<text x="448" y="80" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">查詢（API）</text>
+<text x="448" y="96" fill="#bfc0c0" font-size="12" font-weight="400" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">先找 ACTIVE 版本</text>
+<circle cx="192" cy="136" r="6" fill="#f5f5f5"/>
+<rect x="112" y="200" width="160" height="64" rx="8" fill="#2d3142"/>
+<rect x="112" y="200" width="160" height="64" rx="8" fill="#393e53" stroke="#f5f5f5" stroke-width="1"/>
+<text x="192" y="228" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">BUILDING</text>
+<text x="192" y="244" fill="#bfc0c0" font-size="12" font-weight="400" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">寫新的 collection</text>
+<rect x="368" y="200" width="160" height="64" rx="8" fill="#2d3142"/>
+<rect x="368" y="200" width="160" height="64" rx="8" fill="rgba(240,138,89,0.08)" stroke="#f08a59" stroke-width="1"/>
+<text x="448" y="228" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">ACTIVE</text>
+<text x="448" y="244" fill="#bfc0c0" font-size="12" font-weight="400" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">唯一對外的版本</text>
+<rect x="624" y="200" width="160" height="64" rx="8" fill="#2d3142"/>
+<rect x="624" y="200" width="160" height="64" rx="8" fill="rgba(245,245,245,0.05)" stroke="#bfc0c0" stroke-width="1"/>
+<text x="704" y="228" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">RETIRED</text>
+<text x="704" y="244" fill="#bfc0c0" font-size="12" font-weight="400" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">留 1 份給 rollback</text>
+<circle cx="856" cy="232" r="8" fill="#2d3142" stroke="#f5f5f5" stroke-width="1.2"/>
+<circle cx="856" cy="232" r="5" fill="#f5f5f5"/>
+<rect x="112" y="376" width="160" height="64" rx="8" fill="#2d3142"/>
+<rect x="112" y="376" width="160" height="64" rx="8" fill="rgba(245,245,245,0.02)" stroke="rgba(245,245,245,0.28)" stroke-width="1" stroke-dasharray="4,3"/>
+<text x="192" y="404" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">FAILED</text>
+<text x="192" y="420" fill="#bfc0c0" font-size="12" font-weight="400" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">舊版照常服務</text>
+<line x1="40" y1="464" x2="920" y2="464" stroke="rgba(245,245,245,0.12)" stroke-width="0.8"/>
+<text x="40" y="480" fill="#bfc0c0" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" letter-spacing="0.18em">LEGEND</text>
+<rect x="40" y="493" width="14" height="10" rx="2" fill="rgba(240,138,89,0.08)" stroke="#f08a59" stroke-width="1"/>
+<text x="62" y="502" fill="#bfc0c0" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif">對外服務的版本</text>
+<rect x="174.0" y="493" width="14" height="10" rx="2" fill="#393e53" stroke="#f5f5f5" stroke-width="1"/>
+<text x="196.0" y="502" fill="#bfc0c0" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif">建置中</text>
+<rect x="260.0" y="493" width="14" height="10" rx="2" fill="rgba(245,245,245,0.05)" stroke="#bfc0c0" stroke-width="1"/>
+<text x="282.0" y="502" fill="#bfc0c0" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif">備份</text>
+<rect x="334.0" y="493" width="14" height="10" rx="2" fill="rgba(245,245,245,0.02)" stroke="rgba(245,245,245,0.28)" stroke-width="1" stroke-dasharray="4,3"/>
+<text x="356.0" y="502" fill="#bfc0c0" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif">失敗，終止</text>
+<line x1="444.0" y1="498" x2="466.0" y2="498" stroke="#bfc0c0" stroke-width="1.2" stroke-dasharray="4,3" marker-end="url(#index-lifecycle-muted)"/>
+<text x="480.0" y="502" fill="#bfc0c0" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif">手動操作</text>
+<line x1="556.0" y1="498" x2="578.0" y2="498" stroke="#6a95d8" stroke-width="1.2" marker-end="url(#index-lifecycle-link)"/>
+<text x="592.0" y="502" fill="#bfc0c0" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif">查詢</text>
+</svg></div><p class="recall">回頭看案例：<b>v1</b> 在 BUILDING 待了 8.6 秒，smoke check（25 = 25）通過後切成 ACTIVE；下一版上線時它會變成 RETIRED，留著當 rollback 的備份。</p><div class="cards c3"><div class="card"><p class="tag">Why</p><div class="card-header"><span class="dot coral"></span><h4>為什麼不直接覆蓋舊 collection</h4></div><p>覆蓋就代表重建期間，查詢會看到空的或半套的索引。新版本寫在新的 collection，smoke check（數量相符、查得到東西）通過後，在同一個 transaction 裡把舊版改成 RETIRED、新版改成 ACTIVE。</p></div><div class="card"><p class="tag">Failure</p><div class="card-header"><span class="dot soft"></span><h4>什麼情況會 FAILED</h4></div><p>embedding 拋出例外、smoke check 數量不符、worker 中途死掉（下一次 build 前會被清掉）。三種情況都不會寫 documents 表，所以下次會重做同樣的變更，不會誤以為已經做完。</p></div><div class="card"><p class="tag">Review</p><div class="card-header"><span class="dot muted"></span><h4>複習要注意</h4></div><ul><li>換了 embedding model，舊向量不能複製（向量空間不同），系統會自動整份重新 embed。</li><li>rollback 之後，documents 表描述的還是新語料，要再跑一次 <code>force_full</code>。</li><li>什麼都沒改的 reindex 會直接跳過，不建新版本。</li></ul></div></div></figure><figure><p class="eyebrow">Fig 6 · Blocking</p><h3>為什麼 rebuild 的時候，聊天還能寫進資料庫？</h3><div class="diagram"><svg viewBox="0 0 960 478" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="ingest-locks-title ingest-locks-desc">
+<title id="ingest-locks-title">為什麼 rebuild 的時候，聊天還能寫進資料庫？</title>
+<desc id="ingest-locks-desc">兩列時間軸並排：舊版 ingest 在一個長交易裡一路拿著寫鎖，同時間的聊天寫入要等 5 秒後失敗；新版拆成 plan、begin、populate、finalize 四段，只有 begin 和 finalize 兩段短交易拿寫鎖，聊天寫入不用等。</desc>
+<defs><marker id="ingest-locks-muted" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#bfc0c0"/></marker><marker id="ingest-locks-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#f08a59"/></marker><marker id="ingest-locks-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#6a95d8"/></marker><marker id="ingest-locks-soft" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#8e98ac"/></marker></defs>
+<rect width="100%" height="100%" fill="#2d3142"/>
+<line x1="40" y1="216" x2="920" y2="216" stroke="rgba(245,245,245,0.12)" stroke-width="0.8"/>
+<path d="M 560,112 V 144" fill="none" stroke="#bfc0c0" stroke-width="1.2" marker-end="url(#ingest-locks-muted)"/>
+<path d="M 560,280 V 312" fill="none" stroke="#bfc0c0" stroke-width="1.2" marker-end="url(#ingest-locks-muted)"/>
+<path d="M 160,392 H 872" fill="none" stroke="#bfc0c0" stroke-width="1.2" marker-end="url(#ingest-locks-muted)"/>
+<rect x="568" y="120" width="44" height="16" rx="2" fill="#2d3142"/>
+<text x="590" y="132.5" fill="#bfc0c0" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">等寫鎖</text>
+<rect x="568" y="288" width="44" height="16" rx="2" fill="#2d3142"/>
+<text x="590" y="300.5" fill="#bfc0c0" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">不用等</text>
+<rect x="496" y="64" width="128" height="48" rx="6" fill="#2d3142"/>
+<rect x="496" y="64" width="128" height="48" rx="6" fill="rgba(191,192,192,0.10)" stroke="#8e98ac" stroke-width="1"/>
+<text x="560" y="92" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">聊天寫訊息</text>
+<rect x="160" y="144" width="720" height="56" rx="6" fill="#2d3142"/>
+<rect x="160" y="144" width="720" height="56" rx="6" fill="rgba(245,245,245,0.05)" stroke="#bfc0c0" stroke-width="1"/>
+<rect x="168" y="150" width="32" height="12" rx="2" fill="transparent" stroke="rgba(191,192,192,0.50)" stroke-width="0.8"/>
+<text x="184" y="159" fill="#bfc0c0" font-size="7" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.08em">LOCK</text>
+<text x="520" y="177" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">寫入交易，從頭拿著寫鎖</text>
+<text x="520" y="193" fill="#bfc0c0" font-size="12" font-weight="400" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">掃描 → parse → embed（幾分鐘）→ 切換</text>
+<rect x="496" y="232" width="128" height="48" rx="6" fill="#2d3142"/>
+<rect x="496" y="232" width="128" height="48" rx="6" fill="rgba(191,192,192,0.10)" stroke="#8e98ac" stroke-width="1"/>
+<text x="560" y="260" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">聊天寫訊息</text>
+<rect x="160" y="312" width="128" height="56" rx="6" fill="#2d3142"/>
+<rect x="160" y="312" width="128" height="56" rx="6" fill="rgba(245,245,245,0.02)" stroke="rgba(245,245,245,0.28)" stroke-width="1" stroke-dasharray="4,3"/>
+<text x="224" y="336" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">plan</text>
+<text x="224" y="352" fill="#bfc0c0" font-size="12" font-weight="400" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">只讀 · 5.0s</text>
+<rect x="312" y="312" width="64" height="56" rx="6" fill="#2d3142"/>
+<rect x="312" y="312" width="64" height="56" rx="6" fill="rgba(245,245,245,0.05)" stroke="#bfc0c0" stroke-width="1"/>
+<rect x="320" y="318" width="32" height="12" rx="2" fill="transparent" stroke="rgba(191,192,192,0.50)" stroke-width="0.8"/>
+<text x="336" y="327" fill="#bfc0c0" font-size="7" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.08em">LOCK</text>
+<text x="344" y="345" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">begin</text>
+<text x="344" y="361" fill="#bfc0c0" font-size="12" font-weight="400" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">短交易</text>
+<rect x="400" y="312" width="336" height="56" rx="6" fill="#2d3142"/>
+<rect x="400" y="312" width="336" height="56" rx="6" fill="rgba(245,245,245,0.02)" stroke="rgba(245,245,245,0.28)" stroke-width="1" stroke-dasharray="4,3"/>
+<text x="568" y="336" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">populate：embed＋複製向量</text>
+<text x="568" y="352" fill="#bfc0c0" font-size="12" font-weight="400" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">不碰資料庫 · 2.1s（大語料要幾分鐘）</text>
+<rect x="760" y="312" width="120" height="56" rx="6" fill="#2d3142"/>
+<rect x="760" y="312" width="120" height="56" rx="6" fill="rgba(245,245,245,0.05)" stroke="#bfc0c0" stroke-width="1"/>
+<rect x="768" y="318" width="32" height="12" rx="2" fill="transparent" stroke="rgba(191,192,192,0.50)" stroke-width="0.8"/>
+<text x="784" y="327" fill="#bfc0c0" font-size="7" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.08em">LOCK</text>
+<text x="820" y="345" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">finalize</text>
+<text x="820" y="361" fill="#bfc0c0" font-size="12" font-weight="400" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">短交易 · 0.05s</text>
+<text x="40" y="168" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="start">舊版</text>
+<text x="40" y="186" fill="#8e98ac" font-size="12" font-weight="400" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="start">一個長交易</text>
+<text x="40" y="336" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="start">新版</text>
+<text x="40" y="354" fill="#8e98ac" font-size="12" font-weight="400" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="start">鎖只在兩段</text>
+<text x="880" y="396" fill="#8e98ac" font-size="12" font-weight="400" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="start">時間</text>
+<text x="640" y="93" fill="#f08a59" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="start">5 秒後：database is locked ✗</text>
+<text x="640" y="261" fill="#f08a59" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="start">馬上寫入 ✓</text>
+<line x1="40" y1="412" x2="920" y2="412" stroke="rgba(245,245,245,0.12)" stroke-width="0.8"/>
+<text x="40" y="428" fill="#bfc0c0" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" letter-spacing="0.18em">LEGEND</text>
+<rect x="40" y="441" width="14" height="10" rx="2" fill="rgba(245,245,245,0.05)" stroke="#bfc0c0" stroke-width="1"/>
+<text x="62" y="450" fill="#bfc0c0" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif">拿著寫鎖</text>
+<rect x="138.0" y="441" width="14" height="10" rx="2" fill="rgba(245,245,245,0.02)" stroke="rgba(245,245,245,0.28)" stroke-width="1" stroke-dasharray="4,3"/>
+<text x="160.0" y="450" fill="#bfc0c0" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif">不拿鎖</text>
+<rect x="224.0" y="441" width="14" height="10" rx="2" fill="rgba(191,192,192,0.10)" stroke="#8e98ac" stroke-width="1"/>
+<text x="246.0" y="450" fill="#bfc0c0" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif">同一時間的聊天請求</text>
+</svg></div><p class="recall">回頭看案例：populate 那段就是案例裡 embed 25 個 chunk 的 <b>2.1 秒</b>；語料大的時候會是好幾分鐘，舊版在這整段時間都拿著寫鎖。</p><div class="cards c3"><div class="card"><p class="tag">Pitfall</p><div class="card-header"><span class="dot coral"></span><h4>怎麼抓到的</h4></div><p>寫了一個測試：讓 embedder 在 embed 途中，用另一條連線寫入資料庫。舊版會等滿 5 秒 busy timeout，然後丟出 <code>database is locked</code>；新版直接寫入。</p></div><div class="card"><p class="tag">Why</p><div class="card-header"><span class="dot link"></span><h4>為什麼 SQLite 有事、Postgres 沒事</h4></div><p>SQLite 同一時間只允許一個寫入者（WAL 只保證讀不會擋寫）；Postgres 是 row-level lock，兩邊碰不到同一列。本機預設是 SQLite，所以一定要拆。</p></div><div class="card"><p class="tag">Trade-off</p><div class="card-header"><span class="dot muted"></span><h4>拆開的代價</h4></div><p>documents 的 hash 只在 finalize 才更新。build 中途死掉時，下一次會重做同樣的事：可能重複 embed，換來的是永遠不會「以為做完了」。</p></div></div></figure><figure><p class="eyebrow">Fig 7 · Fallback chain</p><h3>模型壞掉時，一個問題會怎麼一路退下去？</h3><div class="diagram"><svg viewBox="0 0 960 600" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="fallback-chain-title fallback-chain-desc">
+<title id="fallback-chain-title">模型壞掉時，一個問題會怎麼一路退下去？</title>
+<desc id="fallback-chain-desc">降級鏈：主模型、小模型、stale cache、只回傳原文段落、誠實拒答，由上往下嘗試，哪一層成功就停在那層；前兩層共用一個請求時間預算。</desc>
+<defs><marker id="fallback-chain-muted" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#bfc0c0"/></marker><marker id="fallback-chain-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#f08a59"/></marker><marker id="fallback-chain-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#6a95d8"/></marker><marker id="fallback-chain-soft" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#8e98ac"/></marker></defs>
+<rect width="100%" height="100%" fill="#2d3142"/>
+<path d="M 480,144 V 184" fill="none" stroke="#bfc0c0" stroke-width="1.2" marker-end="url(#fallback-chain-muted)"/>
+<path d="M 480,248 V 288" fill="none" stroke="#bfc0c0" stroke-width="1.2" marker-end="url(#fallback-chain-muted)"/>
+<path d="M 480,352 V 392" fill="none" stroke="#bfc0c0" stroke-width="1.2" marker-end="url(#fallback-chain-muted)"/>
+<path d="M 480,456 V 496" fill="none" stroke="#bfc0c0" stroke-width="1.2" marker-end="url(#fallback-chain-muted)"/>
+<rect x="488" y="156" width="172" height="16" rx="2" fill="#2d3142"/>
+<text x="574" y="168.5" fill="#bfc0c0" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">失敗 · 逾時 · breaker 開</text>
+<rect x="488" y="260" width="44" height="16" rx="2" fill="#2d3142"/>
+<text x="510" y="272.5" fill="#bfc0c0" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">也失敗</text>
+<rect x="488" y="364" width="112" height="16" rx="2" fill="#2d3142"/>
+<text x="544" y="376.5" fill="#bfc0c0" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">沒有可用的 cache</text>
+<rect x="488" y="468" width="80" height="16" rx="2" fill="#2d3142"/>
+<text x="528" y="480.5" fill="#bfc0c0" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">連證據都沒有</text>
+<rect x="320" y="80" width="320" height="64" rx="6" fill="#2d3142"/>
+<rect x="320" y="80" width="320" height="64" rx="6" fill="#393e53" stroke="#f5f5f5" stroke-width="1"/>
+<text x="480" y="108" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">① 主模型 llama3</text>
+<text x="480" y="124" fill="#bfc0c0" font-size="12" font-weight="400" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">timeout ≤ 剩餘預算 − 0.5s</text>
+<rect x="320" y="184" width="320" height="64" rx="6" fill="#2d3142"/>
+<rect x="320" y="184" width="320" height="64" rx="6" fill="#393e53" stroke="#f5f5f5" stroke-width="1"/>
+<text x="480" y="212" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">② 小模型 llama3.2:1b</text>
+<text x="480" y="228" fill="#bfc0c0" font-size="12" font-weight="400" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">timeout 上限 45s</text>
+<rect x="320" y="288" width="320" height="64" rx="6" fill="#2d3142"/>
+<rect x="320" y="288" width="320" height="64" rx="6" fill="#393e53" stroke="#f5f5f5" stroke-width="1"/>
+<text x="480" y="316" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">③ stale cache</text>
+<text x="480" y="332" fill="#bfc0c0" font-size="12" font-weight="400" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">同題＋同證據，過期也可用</text>
+<rect x="320" y="392" width="320" height="64" rx="6" fill="#2d3142"/>
+<rect x="320" y="392" width="320" height="64" rx="6" fill="rgba(240,138,89,0.08)" stroke="#f08a59" stroke-width="1"/>
+<text x="480" y="420" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">④ 只回傳原文段落</text>
+<text x="480" y="436" fill="#bfc0c0" font-size="12" font-weight="400" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">檢索有結果，就一定有東西給</text>
+<rect x="320" y="496" width="320" height="64" rx="6" fill="#2d3142"/>
+<rect x="320" y="496" width="320" height="64" rx="6" fill="rgba(245,245,245,0.02)" stroke="rgba(245,245,245,0.28)" stroke-width="1" stroke-dasharray="4,3"/>
+<text x="480" y="524" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">⑤ 誠實拒答</text>
+<text x="480" y="540" fill="#bfc0c0" font-size="12" font-weight="400" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">模型不可用，也沒有相符文件</text>
+<text x="480" y="48" fill="#8e98ac" font-size="12" font-weight="400" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">從上往下試，哪一層成功就停在那層；回答會標示停在第幾層</text>
+<text x="296" y="116" fill="#bfc0c0" font-size="12" font-weight="400" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="end">Q1 正常：停在這層 · 31s</text>
+<text x="296" y="324" fill="#bfc0c0" font-size="12" font-weight="400" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="end">Q1 停掉後：停在這層 · 0.06s</text>
+<text x="296" y="428" fill="#bfc0c0" font-size="12" font-weight="400" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="end">Q2 停掉後：停在這層 · 0.72s</text>
+<path d="M 676,80 H 680 V 248 H 676" fill="none" stroke="#8e98ac" stroke-width="1"/>
+<text x="692" y="148" fill="#f5f5f5" font-size="9" font-weight="400" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">time budget 120s</text>
+<text x="692" y="168" fill="#bfc0c0" font-size="12" font-weight="400" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="start">每層只用剩下的時間</text>
+<text x="692" y="188" fill="#bfc0c0" font-size="12" font-weight="400" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="start">剩 ≤ 1s 就不再試</text>
+</svg></div><p class="recall">回頭看案例：Q1 正常時停在 <b>①</b>（31 秒）；Ollama 停掉後再問 Q1，①② 都失敗，停在 <b>③</b>（0.06 秒）；Q2 是新題，沒有 cache，停在 <b>④</b>（0.72 秒）。</p><div class="cards c2"><div class="card"><p class="tag">How</p><div class="card-header"><span class="dot coral"></span><h4>斷路器怎麼運作</h4></div><p>每個模型各一個，embedding 也有。連續失敗 5 次就打開，接下來 30 秒直接跳過、不再呼叫；之後放 2 個探測請求，成功才關回去。用意是讓壞掉的模型不要害每個請求都白等一次 timeout。</p></div><div class="card"><p class="tag">How</p><div class="card-header"><span class="dot link"></span><h4>時間預算</h4></div><p>每個請求 120 秒。每一層的 timeout 取「這層的上限」和「剩餘時間減 0.5 秒」中較小的；剩不到 1 秒就不再試下一層。踩過的坑：原本 timeout 有 5 秒下限，最後一層會跑超過預算。</p></div><div class="card"><p class="tag">Rule</p><div class="card-header"><span class="dot muted"></span><h4>降級一定要說出來</h4></div><p>每個回答都帶 <code>mode</code>、<code>degraded</code>、<code>degrade_reason</code>，UI 直接顯示「用了 cache」「只顯示段落」「用關鍵字檢索」。降級的答案不能當成正常答案給，也不會被寫進 cache。</p></div><div class="card"><p class="tag">How</p><div class="card-header"><span class="dot soft"></span><h4>檢索這半邊（圖上沒畫）</h4></div><p>embedding 掛掉時：重試 3 次（指數退避＋jitter）→ 有驗證過的 cache 就直接用 → 否則改用關鍵字檢索（中文用 bigram），再接上這條鏈。案例的 Q2 就是走這條路。</p></div></div><div class="cards c1"><div class="card"><p class="tag">Numbers</p><div class="card-header"><span class="dot coral"></span><h4>實測：30% 的模型呼叫失敗時</h4></div><ul><li>真實模型（llama3 → llama3.2:1b）、500 次請求：有這條鏈 <b>100%</b> 成功；把容錯全關掉只有 <b>60.8%</b>。</li><li>那 500 次裡，443 次由生成回答（約 99 次是小模型接手）、34 次用 stale cache、13 次只回原文段落、10 次是有依據的拒答。</li><li>限制：語料只有 25 個 chunk，等於 25 種題目各問約 20 次，重複題讓 cache 吸收了故障，結果偏樂觀。</li></ul></div></div></figure><figure><p class="eyebrow">Fig 8 · Calibration loop</p><h3>門檻怎麼從人的判決裡學出來？</h3><div class="diagram"><svg viewBox="0 0 960 680" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="hitl-loop-title hitl-loop-desc">
+<title id="hitl-loop-title">門檻怎麼從人的判決裡學出來？</title>
+<desc id="hitl-loop-desc">迴圈：policy 依門檻判決、放行或送審、人給出判決、算出 override rate、重播並校準出新門檻，再回到 policy；系統與人的判決都寫回中心的 audit log。</desc>
+<defs><marker id="hitl-loop-muted" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#bfc0c0"/></marker><marker id="hitl-loop-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#f08a59"/></marker><marker id="hitl-loop-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#6a95d8"/></marker><marker id="hitl-loop-soft" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#8e98ac"/></marker></defs>
+<rect width="100%" height="100%" fill="#2d3142"/>
+<path d="M 568.000,117.021 A 236 236 0 0 1 691.317,230.924" fill="none" stroke="#bfc0c0" stroke-width="1.2" marker-end="url(#hitl-loop-muted)"/>
+<path d="M 712.585,296.000 A 236 236 0 0 1 654.293,495.116" fill="none" stroke="#bfc0c0" stroke-width="1.2" marker-end="url(#hitl-loop-muted)"/>
+<path d="M 554.297,560.000 A 236 236 0 0 1 406.843,560.375" fill="none" stroke="#bfc0c0" stroke-width="1.2" marker-end="url(#hitl-loop-muted)"/>
+<path d="M 306.518,496.000 A 236 236 0 0 1 247.214,297.183" fill="none" stroke="#bfc0c0" stroke-width="1.2" marker-end="url(#hitl-loop-muted)"/>
+<path d="M 268.151,232.000 A 236 236 0 0 1 390.888,117.471" fill="none" stroke="#bfc0c0" stroke-width="1.2" marker-end="url(#hitl-loop-muted)"/>
+<path d="M 480.000,132.000 L 480.000,282.000" fill="none" stroke="#8e98ac" stroke-width="1" stroke-dasharray="5,4" marker-end="url(#hitl-loop-soft)"/>
+<path d="M 596.247,496.000 L 518.401,388.854" fill="none" stroke="#8e98ac" stroke-width="1" stroke-dasharray="5,4" marker-end="url(#hitl-loop-soft)"/>
+<rect x="488" y="201" width="44" height="12" rx="2" fill="#2d3142"/>
+<text x="510" y="210" fill="#8e98ac" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">SYSTEM</text>
+<rect x="560.43" y="421.092" width="36" height="12" rx="2" fill="#2d3142"/>
+<text x="578.43" y="430.092" fill="#8e98ac" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">HUMAN</text>
+<rect x="392" y="68" width="176" height="64" rx="6" fill="#2d3142"/>
+<rect x="392" y="68" width="176" height="64" rx="6" fill="#393e53" stroke="#f5f5f5" stroke-width="1"/>
+<text x="480" y="97.5" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">policy 判決</text>
+<text x="480" y="111.5" fill="#bfc0c0" font-size="9" font-weight="400" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">ALLOW · REVIEW · DENY</text>
+<rect x="616" y="232" width="176" height="64" rx="6" fill="#2d3142"/>
+<rect x="616" y="232" width="176" height="64" rx="6" fill="#393e53" stroke="#f5f5f5" stroke-width="1"/>
+<text x="704" y="260" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">放行或送審</text>
+<text x="704" y="276" fill="#bfc0c0" font-size="12" font-weight="400" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">0.15–0.40 送審</text>
+<rect x="532" y="496" width="176" height="64" rx="6" fill="#2d3142"/>
+<rect x="532" y="496" width="176" height="64" rx="6" fill="rgba(240,138,89,0.08)" stroke="#f08a59" stroke-width="1"/>
+<text x="620" y="524" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">人的判決</text>
+<text x="620" y="540" fill="#bfc0c0" font-size="12" font-weight="400" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">審核佇列 · 讚／倒讚</text>
+<rect x="252" y="496" width="176" height="64" rx="6" fill="#2d3142"/>
+<rect x="252" y="496" width="176" height="64" rx="6" fill="#393e53" stroke="#f5f5f5" stroke-width="1"/>
+<text x="340" y="524" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">override rate</text>
+<text x="340" y="540" fill="#bfc0c0" font-size="12" font-weight="400" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">人推翻自動判決的比例</text>
+<rect x="168" y="232" width="176" height="64" rx="6" fill="#2d3142"/>
+<rect x="168" y="232" width="176" height="64" rx="6" fill="#393e53" stroke="#f5f5f5" stroke-width="1"/>
+<text x="256" y="261.5" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">重播＋校準</text>
+<text x="256" y="275.5" fill="#bfc0c0" font-size="9" font-weight="400" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">calibrate_policy.py</text>
+<rect x="372" y="288" width="216" height="96" rx="8" fill="#f5f5f5"/>
+<text x="480" y="332" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">audit log</text>
+<text x="480" y="350" fill="#2d3142" fill-opacity="0.75" font-size="12" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" text-anchor="middle">每筆自動判決＋人的判決</text>
+<line x1="40" y1="612" x2="920" y2="612" stroke="rgba(245,245,245,0.12)" stroke-width="0.8"/>
+<text x="40" y="628" fill="#bfc0c0" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" letter-spacing="0.18em">LEGEND</text>
+<line x1="40" y1="646" x2="62" y2="646" stroke="#bfc0c0" stroke-width="1.2" marker-end="url(#hitl-loop-muted)"/>
+<text x="76" y="650" fill="#bfc0c0" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif">每一輪的流程</text>
+<line x1="176.0" y1="646" x2="198.0" y2="646" stroke="#8e98ac" stroke-width="1.2" stroke-dasharray="4,3" marker-end="url(#hitl-loop-soft)"/>
+<text x="212.0" y="650" fill="#bfc0c0" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif">寫回 audit log</text>
+<rect x="336.0" y="641" width="14" height="10" rx="2" fill="rgba(240,138,89,0.08)" stroke="#f08a59" stroke-width="1"/>
+<text x="358.0" y="650" fill="#bfc0c0" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif">需要人的一步</text>
+</svg></div><p class="recall">回頭看案例：Q1 的 grounding 是 <b>0.61</b>，高於 0.40，系統自動放行（SYSTEM 記一筆 allow）。如果你按倒讚，就會記一筆 HUMAN 的 rejected 並指向那筆 allow，override 的分子加一。</p><div class="cards c3"><div class="card"><p class="tag">Definition</p><div class="card-header"><span class="dot coral"></span><h4>什麼叫 override</h4></div><p>人的判決和系統相反就算：系統放行、人拒絕；系統送審、人核准（代表這次審核是多餘的）；系統拒答、人核准。人同意系統的判決，就不算。</p></div><div class="card"><p class="tag">Why</p><div class="card-header"><span class="dot link"></span><h4>為什麼要收倒讚</h4></div><p>只看審核佇列，只會知道系統太保守的那一面。自動放行的答案也要能被推翻，不然把門檻調到超高，override rate 看起來會永遠完美。</p></div><div class="card"><p class="tag">Numbers</p><div class="card-header"><span class="dot muted"></span><h4>重播只是預測</h4></div><p>calibrate 會把人的判決放到不同門檻下重播，挑 override 最少的組合；每一類至少 20 筆才會動門檻。重播只是預測，真正的前後對比要用門檻改動前後兩段時間的真實資料量出來。</p></div></div></figure></section><section><p class="eyebrow">04 · Failure &amp; review</p><h2>壞掉時與檢討</h2><div class="cards c1"><div class="card"><p class="tag">Failure map</p><div class="card-header"><span class="dot coral"></span><h4>哪個元件掛掉，使用者會看到什麼</h4></div><table><tr><th>掛掉的元件</th><th>使用者看到什麼</th><th>怎麼接住</th></tr><tr><td>Ollama 的生成</td><td>問過的題：cache 的答案；新題：原文段落</td><td>breaker＋time budget＋降級鏈</td></tr><tr><td>Ollama 的 embedding</td><td>關鍵字檢索的結果，再照常生成</td><td>重試 3 次＋關鍵字 fallback</td></tr><tr><td>生成和 embedding 都掛</td><td>原文段落（案例 0.72 秒）</td><td>同上兩者</td></tr><tr><td>Chroma</td><td>請求失敗（<code>outcome = error</code>）</td><td>沒有備援，單點故障</td></tr><tr><td>資料庫</td><td><code>/readyz</code> 回 503，請求失敗</td><td>沒有備援，單點故障</td></tr><tr><td>worker</td><td>索引不再更新，舊版照常服務</td><td>lease 到期後由其他 worker 接手</td></tr><tr><td>build 中途失敗</td><td>感覺不到，舊版 ACTIVE 照常服務</td><td>標成 FAILED，job 退避重試</td></tr></table></div></div><div class="cards c3"><div class="card"><p class="tag">Pitfalls</p><div class="card-header"><span class="dot coral"></span><h4>踩過的坑</h4></div><ul><li>中文 grounding 永遠接近 0，所有中文回答都被拒答 → 改成 CJK bigram。</li><li>ingest 一路拿著寫鎖，rebuild 期間聊天寫不進 SQLite → 拆成四段。</li><li>SQLite 讀回 naive datetime，從新 session resolve approval 直接 crash → 統一用 UTC-aware 型別。</li><li>空的 cache 是 falsy，<code>cache or default</code> 默默換掉了 cache → 改成 <code>is not None</code>。</li><li>timeout 有 5 秒下限，最後一層會超出 time budget。</li><li>逐份文件複製向量：300 份時要 3.5 秒；改成跨文件批次後 0.5 秒。</li><li>eval 計分太寬：檢索被故障弄掉、只好拒答的請求原本也算成功，把 naive 對照組灌高了 → 改成算失敗。</li></ul></div><div class="card"><p class="tag">Limits</p><div class="card-header"><span class="dot link"></span><h4>瓶頸與限制</h4></div><ul><li>Ollama 是單一本機程序：聊天、背景的記憶抽取、worker 的 embedding 搶同一個模型；第一次呼叫冷啟動約 30 秒。</li><li>增量更新仍要把整個語料的向量複製到新 collection，成本是 O(語料) 的複製，不是 O(1)。</li><li>grounding 是詞彙重疊，不是語意蘊含，換句話說就騙得過。</li><li>nomic-embed-text 偏英文：Q1 的檢索沒命中最相關的「最佳化實驗室」那份；中文語料建議換 bge-m3。</li><li>override 的標籤只來自人看過的項目；被拒答的回答沒人看過，無法拿來評分。</li></ul></div><div class="card"><p class="tag">Sources</p><div class="card-header"><span class="dot muted"></span><h4>數字的出處</h4></div><ul><li><b>真實模型</b>：Fig 3、Fig 4 的所有數字（docker compose＋本機 Ollama，14 份個人文件）；Fig 7 的故障注入結果（<code>eval/fault_injection.py</code>，原始輸出在 <code>docs/results/</code>）。</li><li><b>fake backend</b>，只驗證腳本本身、不代表效能：300 份文件的 ingest benchmark（legacy 7.3 秒全程沒有索引 vs 增量 0.52 秒）。</li><li><b>還沒量</b>：大語料上的更新時間（<code>ingest_benchmark.py --synthetic-docs 4000</code>）、題目更多樣的故障注入、真實使用資料的 override rate。</li></ul></div></div></section><div class="footer"><span>AI Knowledge Assistant · architecture dossier</span><span>2026-10-12 · diagram-design · minimal dark</span></div>
+</div>
+</body>
+</html>

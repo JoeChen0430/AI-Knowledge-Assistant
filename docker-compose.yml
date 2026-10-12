@@ -1,0 +1,139 @@
+# API + ingest worker + UI, backed by Postgres and a Chroma server.
+#
+#   docker compose up --build          # uses Ollama running on the host
+#   open http://localhost:8501         # UI  (API on http://localhost:8080/docs)
+#
+# Ollama defaults to the host install: on macOS a container cannot use the GPU,
+# so host Ollama is far faster. To run it in a container instead (Linux/GPU
+# hosts), use the "ollama" profile and point the app at it:
+#
+#   OLLAMA_BASE_URL=http://ollama:11434 docker compose --profile ollama up --build
+
+name: aka
+
+x-app: &app
+  build: .
+  image: aka-knowledge-assistant:local
+  restart: unless-stopped
+  environment: &app-env
+    ENV: docker
+    LOG_JSON: "true"
+    DATABASE_URL: postgresql+psycopg://aka:${POSTGRES_PASSWORD:-aka-local-only}@postgres:5432/aka
+    CHROMA_HOST: chroma
+    CHROMA_PORT: "8000"
+    OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+    LLM_MODEL: ${LLM_MODEL:-llama3}
+    LLM_FALLBACK_MODELS: ${LLM_FALLBACK_MODELS:-llama3.2:1b}
+    EMBED_MODEL: ${EMBED_MODEL:-nomic-embed-text}
+    AUTH_ENABLED: ${AUTH_ENABLED:-false}
+    JWT_SECRET: ${JWT_SECRET:-docker-local-secret-change-me-before-deploying}
+    BOOTSTRAP_ADMIN_TOKEN: ${BOOTSTRAP_ADMIN_TOKEN:-}
+    FAULT_INJECTION_RATE: ${FAULT_INJECTION_RATE:-0}
+    EMBEDDED_WORKER: "false"
+    DATA_DIR: /app/data
+    TRASH_DIR: /app/var/trash
+    QUARANTINE_DIR: /app/var/quarantine
+  volumes:
+    - ./data:/app/data
+    - app-var:/app/var
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: aka
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aka-local-only}
+      POSTGRES_DB: aka
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aka -d aka"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  chroma:
+    image: chromadb/chroma:1.5.2
+    restart: unless-stopped
+    environment:
+      ANONYMIZED_TELEMETRY: "FALSE"
+    volumes:
+      - chroma-data:/data
+
+  api:
+    <<: *app
+    command: ["uvicorn", "aka.api.main:app", "--host", "0.0.0.0", "--port", "8080"]
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      chroma:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/healthz', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  worker:
+    <<: *app
+    command: ["python", "-m", "aka.ingest.worker"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      chroma:
+        condition: service_started
+
+  ui:
+    <<: *app
+    command:
+      - streamlit
+      - run
+      - app.py
+      - --server.address=0.0.0.0
+      - --server.port=8501
+      - --server.headless=true
+      - --browser.gatherUsageStats=false
+    environment:
+      <<: *app-env
+      API_BASE_URL: http://api:8080
+    ports:
+      - "8501:8501"
+    depends_on:
+      api:
+        condition: service_healthy
+
+  ollama:
+    profiles: ["ollama"]
+    image: ollama/ollama:0.34.4
+    restart: unless-stopped
+    volumes:
+      - ollama-models:/root/.ollama
+    ports:
+      - "11434:11434"
+
+  ollama-pull:
+    profiles: ["ollama"]
+    image: ollama/ollama:0.34.4
+    restart: "no"
+    environment:
+      OLLAMA_HOST: ollama:11434
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >-
+        ollama pull ${LLM_MODEL:-llama3} &&
+        ollama pull ${LLM_FALLBACK_MODELS:-llama3.2:1b} &&
+        ollama pull ${EMBED_MODEL:-nomic-embed-text}
+    depends_on:
+      - ollama
+
+volumes:
+  pg-data:
+  chroma-data:
+  app-var:
+  ollama-models:

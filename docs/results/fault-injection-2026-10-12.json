@@ -1,0 +1,174 @@
+{
+  "backend": "ollama",
+  "models": {
+    "chain": [
+      "llama3",
+      "llama3.2:1b"
+    ],
+    "embed": "nomic-embed-text"
+  },
+  "max_tokens": 200,
+  "corpus": "data",
+  "chunks": 25,
+  "seed": 42,
+  "repeat_share": 0.3,
+  "timeout_delay_s": 0.5,
+  "results": {
+    "baseline": {
+      "fault_rate": 0.0,
+      "naive": false,
+      "requests": 500,
+      "success_rate": 1.0,
+      "answered_rate": 0.984,
+      "outcomes": {
+        "answered": 492,
+        "policy_refused": 8
+      },
+      "modes": {
+        "generated": 492,
+        "refused": 8
+      },
+      "retrieval_modes": {
+        "vector": 500
+      },
+      "degraded_share": 0.022,
+      "fallback_model_share": 0.0,
+      "latency": {
+        "p50_s": 23.062,
+        "p95_s": 31.66,
+        "max_s": 45.08,
+        "mean_s": 23.283
+      },
+      "wall_s": 11643.2,
+      "faults": {},
+      "breakers_at_end": [
+        {
+          "name": "embed:nomic-embed-text",
+          "state": "closed",
+          "failures": 0,
+          "retry_after": 0.0
+        },
+        {
+          "name": "llm:llama3",
+          "state": "closed",
+          "failures": 0,
+          "retry_after": 0.0
+        }
+      ]
+    },
+    "faults@30%": {
+      "fault_rate": 0.3,
+      "naive": false,
+      "requests": 500,
+      "success_rate": 1.0,
+      "answered_rate": 0.98,
+      "outcomes": {
+        "answered": 490,
+        "policy_refused": 10
+      },
+      "modes": {
+        "generated": 443,
+        "extractive": 13,
+        "cached": 34,
+        "refused": 10
+      },
+      "retrieval_modes": {
+        "vector": 500
+      },
+      "degraded_share": 0.304,
+      "fallback_model_share": 0.198,
+      "latency": {
+        "p50_s": 20.887,
+        "p95_s": 32.164,
+        "max_s": 44.911,
+        "mean_s": 18.539
+      },
+      "wall_s": 9271.3,
+      "faults": {
+        "embed.calls": 34,
+        "chat.calls": 637,
+        "chat.faults": 184,
+        "chat.timeout": 94,
+        "embed.faults": 9,
+        "embed.unavailable": 5,
+        "embed.timeout": 4,
+        "chat.unavailable": 90
+      },
+      "breakers_at_end": [
+        {
+          "name": "embed:nomic-embed-text",
+          "state": "closed",
+          "failures": 0,
+          "retry_after": 0.0
+        },
+        {
+          "name": "llm:llama3",
+          "state": "closed",
+          "failures": 0,
+          "retry_after": 0.0
+        },
+        {
+          "name": "llm:llama3.2:1b",
+          "state": "closed",
+          "failures": 0,
+          "retry_after": 0.0
+        }
+      ]
+    },
+    "naive faults@30%": {
+      "fault_rate": 0.3,
+      "naive": true,
+      "requests": 500,
+      "success_rate": 0.608,
+      "answered_rate": 0.596,
+      "outcomes": {
+        "fallback_needed": 86,
+        "answered": 298,
+        "unavailable": 110,
+        "policy_refused": 6
+      },
+      "modes": {
+        "extractive": 86,
+        "generated": 298,
+        "refused": 116
+      },
+      "retrieval_modes": {
+        "vector": 344,
+        "none": 156
+      },
+      "degraded_share": 0.502,
+      "fallback_model_share": 0.0,
+      "latency": {
+        "p50_s": 14.703,
+        "p95_s": 36.154,
+        "max_s": 46.507,
+        "mean_s": 14.11
+      },
+      "wall_s": 7056.6,
+      "faults": {
+        "embed.calls": 484,
+        "chat.calls": 500,
+        "chat.faults": 136,
+        "chat.timeout": 66,
+        "chat.unavailable": 70,
+        "embed.faults": 140,
+        "embed.timeout": 69,
+        "embed.unavailable": 71
+      },
+      "breakers_at_end": [
+        {
+          "name": "embed:nomic-embed-text",
+          "state": "closed",
+          "failures": 0,
+          "retry_after": 0.0
+        },
+        {
+          "name": "llm:llama3",
+          "state": "closed",
+          "failures": 0,
+          "retry_after": 0.0
+        }
+      ]
+    }
+  }
+}
