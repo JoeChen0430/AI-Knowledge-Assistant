@@ -4,18 +4,28 @@ Compares the original ingest strategy with the blue/green incremental one on
 the same corpus, while a probe thread queries the knowledge base every
 ``--probe-interval`` seconds the whole time:
 
-  legacy        drop the collection, re-parse and re-embed every document
-                (what the first version did on every upload or delete)
-  initial       first blue/green build of the corpus
+  initial       first blue/green build of the corpus (= the cost of a full rebuild)
   incremental   the same corpus after one document is edited or added
+  legacy        drop the collection, re-parse and re-embed every document
+                (what the first version did on every upload or delete),
+                on the same edited corpus
   noop          a rerun with nothing changed
 
-    # real embeddings (Ollama must be running); use a corpus big enough that
-    # a full rebuild takes minutes
+Two full builds in total (initial and legacy), so expect roughly twice the
+full-rebuild time. A heartbeat line every 30s shows a long build is moving.
+
+    # real embeddings (Ollama must be running). ~4000 synthetic docs of 800
+    # words is ~12k chunks — around 14 minutes per full build on an M-series Mac
+    python eval/ingest_benchmark.py --synthetic-docs 4000
+
+    # or a real document folder, if it is large enough
     python eval/ingest_benchmark.py --corpus ~/Documents/notes
 
     # timing shape only, no model server
     python eval/ingest_benchmark.py --backend fake --synthetic-docs 2000 --fake-embed-ms 20
+
+Don't run it while another Ollama job (e.g. fault_injection.py) is running:
+both share the same model server and the timings would be meaningless.
 
 Each probe classifies what a query would have seen:
 
@@ -122,9 +132,10 @@ LEGACY_COLLECTION = "legacy_benchmark"
 LLAMAINDEX_INSERT_BATCH = 2048  # VectorStoreIndex's default insert_batch_size
 
 
-def legacy_rebuild(settings, backend) -> dict:
+def legacy_rebuild(settings, backend, progress: dict | None = None) -> dict:
     """Delete-and-rebuild, as the original ingest.py did: same parser, same
-    chunker, embeddings inserted LLAMAINDEX_INSERT_BATCH nodes at a time."""
+    chunker, embeddings inserted LLAMAINDEX_INSERT_BATCH nodes at a time.
+    ``progress['embedded']`` is updated as it goes, for the heartbeat."""
     from aka.ingest.chunker import parse_document
     from aka.ingest.pipeline import EMBED_BATCH, scan_data_dir
     from aka.ingest.vectorstore import get_chroma
@@ -161,6 +172,8 @@ def legacy_rebuild(settings, backend) -> dict:
                 (f"{rel_path}:{c.ordinal}", c.text, v) for c, v in zip(batch, vectors)
             )
             chunks += len(batch)
+            if progress is not None:
+                progress["embedded"] = chunks
             if len(buffer) >= LLAMAINDEX_INSERT_BATCH:
                 flush()
     flush()
@@ -209,6 +222,57 @@ def bluegreen_probe(settings, vector, expected: int):
             session.close()
 
     return probe
+
+
+class Heartbeat:
+    """A progress line every 30s, so a 14-minute build visibly moves."""
+
+    def __init__(self, label, count=None, every: float = 30.0):
+        self.label, self.count, self.every = label, count, every
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._started = 0.0
+
+    def _run(self) -> None:
+        while not self._stop.wait(self.every):
+            extra = ""
+            if self.count is not None:
+                try:
+                    extra = f", {self.count()} chunks so far"
+                except Exception:
+                    pass
+            minutes = (time.perf_counter() - self._started) / 60
+            print(f"  ... {self.label}: {minutes:.1f} min{extra}", flush=True)
+
+    def __enter__(self) -> "Heartbeat":
+        self._started = time.perf_counter()
+        self._thread.start()
+        return self
+
+    def __exit__(self, *exc) -> None:
+        self._stop.set()
+        self._thread.join(timeout=5)
+
+
+def building_count(settings) -> int:
+    """Chunks written so far into the BUILDING version's collection."""
+    from sqlalchemy import select
+
+    from aka.db.models import IndexStatus, IndexVersion
+    from aka.db.session import get_session_factory
+    from aka.ingest.vectorstore import get_chroma
+
+    session = get_session_factory(settings)()
+    try:
+        name = session.scalars(
+            select(IndexVersion.collection_name).where(
+                IndexVersion.tenant_id == settings.DEFAULT_TENANT,
+                IndexVersion.status == IndexStatus.BUILDING,
+            )
+        ).first()
+    finally:
+        session.close()
+    return get_chroma(settings).get_collection(name).count() if name else 0
 
 
 def active_count(settings) -> int:
@@ -281,21 +345,13 @@ def main() -> int:
     probe_vector = backend.embed(["failover drill schedule"])[0]
     results: dict = {"corpus": corpus_label, "files": files, "backend": args.backend}
 
-    if not args.skip_legacy:
-        print("\nlegacy: initial build...")
-        initial = legacy_rebuild(settings, backend)
-        print("legacy: one document changed -> drop and rebuild everything (probing)...")
-        note = edit_one_document(data_dir, args.edit)
-        expected = initial["chunks_embedded"]
-        with Prober(legacy_probe(settings, probe_vector, expected), args.probe_interval) as prober:
-            legacy = legacy_rebuild(settings, backend)
-        results["legacy_rebuild"] = {**legacy, "change": note, "availability": prober.as_dict()}
-        print(f"  {legacy['duration_s']:.1f}s; empty for {prober.longest[EMPTY]:.1f}s, "
-              f"incomplete for {prober.longest_not_complete_s:.1f}s")
-
-    print("\nblue/green: initial build...")
-    results["initial_build"] = run_ingest(settings, backend)
-    print(f"  {results['initial_build']['duration_s']:.1f}s")
+    print("\nblue/green: initial build (= the cost of a full rebuild)...")
+    with Heartbeat("initial build", lambda: building_count(settings)):
+        results["initial_build"] = run_ingest(settings, backend)
+    full = results["initial_build"]
+    rate = full["chunks_embedded"] / max(full["duration_s"], 1e-9)
+    print(f"  {full['duration_s']:.1f}s for {full['chunks_embedded']} chunks ({rate:.1f} chunks/s)")
+    write_json(args.out, results)
 
     print("blue/green: one document changed -> incremental update (probing)...")
     note = edit_one_document(data_dir, args.edit)
@@ -306,6 +362,19 @@ def main() -> int:
     print(f"  {update['duration_s']:.2f}s (embedded {update['chunks_embedded']}, "
           f"reused {update['chunks_reused']}); empty for {prober.longest[EMPTY]:.2f}s, "
           f"incomplete for {prober.longest_not_complete_s:.2f}s")
+    write_json(args.out, results)
+
+    if not args.skip_legacy:
+        print(f"\nlegacy: drop the collection and rebuild everything, same corpus (probing; "
+              f"expect ~{full['duration_s'] / 60:.1f} min)...")
+        progress = {"embedded": 0}
+        with Prober(legacy_probe(settings, probe_vector, expected), args.probe_interval) as prober, \
+                Heartbeat("legacy rebuild", lambda: progress["embedded"]):
+            legacy = legacy_rebuild(settings, backend, progress)
+        results["legacy_rebuild"] = {**legacy, "change": note, "availability": prober.as_dict()}
+        print(f"  {legacy['duration_s']:.1f}s; empty for {prober.longest[EMPTY]:.1f}s, "
+              f"incomplete for {prober.longest_not_complete_s:.1f}s")
+        write_json(args.out, results)
 
     print("blue/green: nothing changed...")
     results["noop"] = run_ingest(settings, backend)

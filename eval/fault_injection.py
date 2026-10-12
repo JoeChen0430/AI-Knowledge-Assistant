@@ -12,8 +12,9 @@ still got a usable response and which rung of the degradation ladder served it.
     python eval/fault_injection.py --backend fake --synthetic-docs 40 --rate 0.3
 
 Success = the user got an answer, a cached answer, the matching passages, or
-a policy refusal ("not in your documents"). Failure = the request errored or
-the system had nothing at all to show ("unavailable"). ``--naive`` adds a run
+a policy refusal made on real evidence ("not in your documents"). Failure = the
+request errored, the system had nothing at all to show, or it refused only
+because a fault cost it the retrieval ("unavailable"). ``--naive`` adds a run
 with every resilience feature off (no fallback model, no retries, no keyword
 fallback, no cache) where only a freshly generated answer counts, which is
 roughly what the original app could do.
@@ -63,6 +64,10 @@ def build_questions(settings, n: int, repeat_share: float, seed: int) -> list[st
     unique = [q for q in (question_from_chunk(t or "", rng) for t in texts) if q]
     if not unique:
         raise SystemExit("could not derive questions from the corpus")
+    print(f"{len(unique)} distinct questions for {n} requests")
+    if len(unique) < min(n, 100):
+        print("  warning: few distinct questions — repeats let the answer and query-vector caches absorb\n"
+              "  faults, so the result is optimistic. Use a larger corpus for a stricter test.")
 
     questions: list[str] = []
     for i in range(n):
@@ -111,6 +116,10 @@ def run_condition(settings, inner_client, questions, *, rate, seed, timeout_dela
                 question, tenant_id=run_settings.DEFAULT_TENANT, user_id="eval"
             )
         outcome = result.outcome
+        if outcome == "policy_refused" and not result.evidence and result.retrieval_mode != "vector":
+            # Refused only because retrieval was lost to a fault: that is an
+            # outage the user felt, not the policy doing its job.
+            outcome = "unavailable"
         if naive and outcome == "answered" and result.mode != "generated":
             outcome = "fallback_needed"
         outcomes[outcome] += 1
@@ -119,9 +128,12 @@ def run_condition(settings, inner_client, questions, *, rate, seed, timeout_dela
         degraded += result.degraded
         tiers += result.model_tier > 0
         latencies.append(result.latency_s)
-        if i % 50 == 0:
+        if i % 10 == 0 or i == len(questions):
             ok = sum(outcomes[o] for o in SUCCESS_OUTCOMES)
-            print(f"  {i}/{len(questions)}  success so far {ok / i:.1%}", flush=True)
+            per = (time.perf_counter() - started) / i
+            eta = per * (len(questions) - i) / 60
+            print(f"  {i}/{len(questions)}  success {ok / i:.1%}  {per:.1f}s/request  ~{eta:.0f} min left",
+                  flush=True)
 
     n = len(questions)
     ok = sum(outcomes[o] for o in SUCCESS_OUTCOMES)
@@ -155,11 +167,16 @@ def main() -> int:
     parser.add_argument("--timeout-delay", type=float, default=None,
                         help="seconds an injected timeout waits (default 0.5 ollama, 0.02 fake)")
     parser.add_argument("--naive", action="store_true", help="also run with resilience disabled")
+    parser.add_argument("--skip-baseline", action="store_true", help="skip the no-fault reference run")
+    parser.add_argument("--max-tokens", type=int, default=None,
+                        help="cap each generated answer (e.g. 200); availability does not need long answers")
     parser.add_argument("--workdir", type=Path, default=None, help="workspace (default: temp dir)")
     parser.add_argument("--out", default="eval/results/fault_injection.json")
     args = parser.parse_args()
 
     overrides = {"REQUEST_BUDGET_S": 120}
+    if args.max_tokens:
+        overrides["LLM_MAX_TOKENS"] = args.max_tokens
     if args.backend == "fake":
         # Fake embeddings are bag-of-words; see tests/test_api.py.
         overrides.update(RETRIEVAL_MIN_SCORE=0.05, LLM_MODEL="fake-large", LLM_FALLBACK_MODELS="fake-small")
@@ -190,9 +207,23 @@ def main() -> int:
     print(f"  {report.chunks_embedded} chunks in {report.duration_s:.1f}s")
 
     questions = build_questions(settings, args.requests, args.repeat_share, args.seed)
-    conditions = [("baseline", 0.0, False), (f"faults@{args.rate:.0%}", args.rate, False)]
+    conditions = [] if args.skip_baseline else [("baseline", 0.0, False)]
+    conditions.append((f"faults@{args.rate:.0%}", args.rate, False))
     if args.naive:
         conditions.append((f"naive faults@{args.rate:.0%}", args.rate, True))
+
+    def save(results: dict) -> None:
+        write_json(args.out, {
+            "backend": args.backend,
+            "models": {"chain": [settings.LLM_MODEL, *settings.LLM_FALLBACK_MODELS], "embed": settings.EMBED_MODEL},
+            "max_tokens": settings.LLM_MAX_TOKENS,
+            "corpus": str(args.corpus) if not args.synthetic_docs else f"synthetic:{args.synthetic_docs}",
+            "chunks": report.chunks_embedded,
+            "seed": args.seed,
+            "repeat_share": args.repeat_share,
+            "timeout_delay_s": timeout_delay,
+            "results": results,
+        })
 
     results = {}
     for name, rate, naive in conditions:
@@ -201,22 +232,12 @@ def main() -> int:
             settings, backend, questions, rate=rate, seed=args.seed,
             timeout_delay=timeout_delay, naive=naive,
         )
+        save(results)  # after every condition, so an interrupted run keeps what finished
 
     print("\ncondition                success  answered  degraded  p95 latency  outcomes")
     for name, r in results.items():
         print(f"{name:<24} {r['success_rate']:>7.1%}  {r['answered_rate']:>8.1%}  "
               f"{r['degraded_share']:>8.1%}  {r['latency'].get('p95_s', 0):>10.2f}s  {r['outcomes']}")
-
-    write_json(args.out, {
-        "backend": args.backend,
-        "models": {"chain": [settings.LLM_MODEL, *settings.LLM_FALLBACK_MODELS], "embed": settings.EMBED_MODEL},
-        "corpus": str(args.corpus) if not args.synthetic_docs else f"synthetic:{args.synthetic_docs}",
-        "chunks": report.chunks_embedded,
-        "seed": args.seed,
-        "repeat_share": args.repeat_share,
-        "timeout_delay_s": timeout_delay,
-        "results": results,
-    })
     return 0
 
 

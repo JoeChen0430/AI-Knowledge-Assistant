@@ -48,7 +48,49 @@ vectors, SQLite or Postgres for state.
 
 Also: tiered memory (recent turns, rolling session summary, durable facts
 with decay), JWT auth with tenant isolation, prompt-injection fencing,
-OpenTelemetry traces and Prometheus metrics (`/metrics`).
+OpenTelemetry traces and Prometheus metrics (`/metrics`). Documents and
+questions can be in Chinese: chunking splits on CJK punctuation, and grounding
+and keyword fallback match CJK bigrams.
+
+A diagrammed walkthrough of the design — overview, one worked example with
+real numbers, a deep-dive per module, failure modes and pitfalls — is in
+[`docs/architecture-dossier.html`](docs/architecture-dossier.html) (open it in a browser).
+
+## Results
+
+Measured, not projected. The raw output behind each table is committed under
+[`docs/results/`](docs/results/).
+
+### Resilience under injected failure
+
+[`eval/fault_injection.py`](eval/fault_injection.py) with real models
+(llama3 → llama3.2:1b, nomic-embed-text) on an Apple M4 with 24 GB: 500
+requests per condition, 30% of chat and embedding calls failing (half as
+immediate errors, half as timeouts), seed 42.
+
+| Condition | Success | Answered | Degraded | p95 latency |
+|---|---|---|---|---|
+| No faults | 100.0% | 98.4% | 2.2% | 31.7 s |
+| 30% of model calls failing | **100.0%** | 98.0% | 30.4% | 32.2 s |
+| 30% failing, resilience off (`--naive`) | 60.8% | 59.6% | 50.2% | 36.2 s |
+
+Under faults, 443 requests were answered by generation (about 99 of them by
+the fallback model), 34 from the stale-answer cache and 13 with the retrieved
+passages only; the other 10 were policy refusals made on real evidence. With
+resilience off, 110 requests had nothing to show and 86 more would have needed
+a fallback the naive setup does not have.
+
+**Caveat.** The corpus behind this run is 14 documents (25 chunks), so it has
+25 distinct questions, each asked about 20 times. Repeats let the answer cache
+and the query-vector cache absorb faults, which flatters the resilient
+condition; a larger corpus with more distinct questions is the stricter test.
+
+### Not measured yet
+
+- **Ingest** — full rebuild vs. single-document update with real embeddings on
+  a large corpus (`eval/ingest_benchmark.py --synthetic-docs 4000`).
+- **Override rate** — needs a period of real review-queue and feedback use
+  before `eval/calibrate_policy.py` has human verdicts to report.
 
 ## Architecture
 
@@ -102,30 +144,41 @@ Ollama in a container instead:
 
 The numbers come from these scripts, run on your hardware and corpus. Each
 one works in a throwaway workspace and never touches `./data`, `./var` or
-`./chroma_db`. Results are written to `eval/results/`.
+`./chroma_db`. Results are written to `eval/results/`, after every stage, so an
+interrupted run keeps what finished.
+
+With real models these runs take hours (llama3 answers in roughly 15–20 s per
+request on an M4), so prefix them with `caffeinate -i` on macOS — a sleeping
+laptop pauses the run — and don't run two at once: they share one Ollama.
 
 ```bash
 # 1. Single-document update vs. full rebuild, and index availability during each
-python eval/ingest_benchmark.py --corpus /path/to/a/large/corpus
+#    (~12k chunks; two full builds, roughly 30-35 min on an M-series Mac)
+caffeinate -i python eval/ingest_benchmark.py --synthetic-docs 4000
 
 # 2. Success rate with 30% of model calls failing (chat + embedding)
-python eval/fault_injection.py --corpus ./data --rate 0.3 --requests 500 --naive
+caffeinate -i python eval/fault_injection.py --corpus ./data --rate 0.3 --requests 500 --naive --max-tokens 200
 
 # 3. Override rate, and thresholds that would have agreed with the humans
 python eval/calibrate_policy.py --until 2026-11-01   # period before a change
 python eval/calibrate_policy.py --since 2026-11-01   # period after
 ```
 
-- **Ingest benchmark:** times the original strategy (drop the collection,
-  re-embed everything, insert in LlamaIndex's 2048-node batches) against an
-  incremental blue/green update after one document changes, while a probe
-  thread queries the index every 50 ms and records how long it was empty or
-  incomplete. The full rebuild time scales with corpus size; use a corpus big
-  enough to matter.
+- **Ingest benchmark:** builds the corpus with blue/green (the cost of a full
+  rebuild), changes one document and runs the incremental update, then times
+  the original strategy on the same corpus — drop the collection, re-embed
+  everything, insert in LlamaIndex's 2048-node batches. A probe thread queries
+  the index every 50 ms throughout and records how long it was empty or
+  incomplete. Synthetic documents are fine for timing: embedding cost depends
+  on token count, not content.
 - **Fault injection:** indexes the corpus, then runs the same question set
-  with no faults, with `--rate` faults, and (`--naive`) with every resilience
-  feature disabled. Success = an answer, a cached answer, the passages, or a
-  policy refusal; failure = an error or nothing to show.
+  with no faults (`--skip-baseline` drops this), with `--rate` faults, and
+  (`--naive`) with every resilience feature disabled. Success = an answer, a
+  cached answer, the passages, or a policy refusal made on real evidence;
+  failure = an error, nothing to show, or a refusal caused only by a fault
+  losing the retrieval. `--max-tokens` caps answer length — availability does
+  not need long answers. The script prints how many distinct questions the
+  corpus yields and warns when repeats would flatter the result.
 - **Calibration:** reads the audit log of a running deployment. The measured
   override rate is real; the threshold replay is a projection over the same
   human verdicts. Labels come only from people using the review queue and
